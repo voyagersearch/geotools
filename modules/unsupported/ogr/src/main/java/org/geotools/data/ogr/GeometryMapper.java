@@ -16,14 +16,7 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.OGRUtils.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
-
-import org.bridj.Pointer;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRwkbByteOrder;
 
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -46,9 +39,15 @@ import com.vividsolutions.jts.io.WKTWriter;
 @SuppressWarnings("rawtypes")
 abstract class GeometryMapper {
 
-    abstract Geometry parseOgrGeometry(Pointer geom) throws IOException;
+    protected OGR ogr;
 
-    abstract Pointer parseGTGeometry(Geometry geometry) throws IOException;
+    protected GeometryMapper(OGR ogr) {
+        this.ogr = ogr;
+    }
+
+    abstract Geometry parseOgrGeometry(Object geom) throws IOException;
+
+    abstract Object parseGTGeometry(Geometry geometry) throws IOException;
 
     static class WKB extends GeometryMapper {
         GeometryFactory geomFactory;
@@ -57,7 +56,8 @@ abstract class GeometryMapper {
 
         WKBWriter wkbWriter;
 
-        public WKB(GeometryFactory geomFactory) {
+        public WKB(GeometryFactory geomFactory, OGR ogr) {
+            super(ogr);
             this.geomFactory = geomFactory;
             this.wkbReader = new WKBReader(geomFactory);
             this.wkbWriter = new WKBWriter();
@@ -69,12 +69,11 @@ abstract class GeometryMapper {
          * 
          * @throws IOException
          */
-        Geometry parseOgrGeometry(Pointer geom) throws IOException {
-            int wkbSize = OGR_G_WkbSize(geom);
-            Pointer<Byte> ptrBytes = pointerToBytes(new byte[wkbSize]);
-            checkError(OGR_G_ExportToWkb(geom, OGRwkbByteOrder.wkbXDR, ptrBytes));
+        Geometry parseOgrGeometry(Object geom) throws IOException {
+            int wkbSize = ogr.GeometryGetWkbSize(geom);
+            byte[] wkb = new byte[wkbSize];
+            ogr.CheckError(ogr.GeometryExportToWkb(geom, wkb));
             try {
-                byte[] wkb = ptrBytes.getBytes();
                 Geometry g = wkbReader.read(wkb);
                 return g;
             } catch (ParseException pe) {
@@ -82,13 +81,13 @@ abstract class GeometryMapper {
             }
         }
 
-        Pointer parseGTGeometry(Geometry geometry) throws IOException {
+        Object parseGTGeometry(Geometry geometry) throws IOException {
             byte[] wkb = wkbWriter.write(geometry);
-            Pointer<Pointer<?>> ptr = allocatePointer();
-            checkError(OGR_G_CreateFromWkb(pointerToBytes(wkb), null, ptr, wkb.length));
-            return ptr.getPointer(Pointer.class);
+            int[] ret = new int[1];
+            Object result = ogr.GeometryCreateFromWkb(wkb, ret);
+            ogr.CheckError(ret[0]);
+            return result;
         }
-
     }
 
     static class WKT extends GeometryMapper {
@@ -98,7 +97,8 @@ abstract class GeometryMapper {
 
         WKTWriter wktWriter;
 
-        public WKT(GeometryFactory geomFactory) {
+        public WKT(GeometryFactory geomFactory, OGR ogr) {
+            super(ogr);
             this.geomFactory = geomFactory;
             this.wktReader = new WKTReader(geomFactory);
             this.wktWriter = new WKTWriter();
@@ -110,23 +110,23 @@ abstract class GeometryMapper {
          * 
          * @throws IOException
          */
-        Geometry parseOgrGeometry(Pointer geom) throws IOException {
-            Pointer<Pointer<Byte>> wktPtr = allocatePointer(Byte.class);
-            checkError(OGR_G_ExportToWkt(geom, wktPtr));
+        Geometry parseOgrGeometry(Object geom) throws IOException {
+            int[] ret = new int[1];
+            String wkt = ogr.GeometryExportToWkt(geom, ret);
+            ogr.CheckError(ret[0]);
             try {
-                String wkt = wktPtr.getPointer(Byte.class).getCString();
                 return wktReader.read(wkt);
             } catch (ParseException pe) {
                 throw new IOException("Could not parse the current Geometry in WKT format.", pe);
             }
         }
 
-        Pointer parseGTGeometry(Geometry geometry) throws IOException {
+        Object parseGTGeometry(Geometry geometry) throws IOException {
             String wkt = wktWriter.write(geometry);
-            Pointer<Pointer<Byte>> ptr = pointerToPointer(pointerToCString(wkt));
-            Pointer<Pointer<?>> geom = allocatePointer();
-            checkError(OGR_G_CreateFromWkt(ptr, null, geom));
-            return geom.getPointer(Pointer.class);
+            int[] ret = new int[1];
+            Object result = ogr.GeometryCreateFromWkt(wkt, ret);
+            ogr.CheckError(ret[0]);
+            return result;
         }
 
     }

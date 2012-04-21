@@ -18,7 +18,6 @@ package org.geotools.data.ogr;
 
 import java.io.IOException;
 
-import org.bridj.Pointer;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FeatureWriter;
 import org.geotools.data.Query;
@@ -45,17 +44,19 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 class OGRFeatureStore extends ContentFeatureStore {
 
     OGRFeatureSource delegate;
+    OGR ogr;
 
-    public OGRFeatureStore(ContentEntry entry, Query query) {
+    public OGRFeatureStore(ContentEntry entry, Query query, OGR ogr) {
         super(entry, query);
-        delegate = new OGRFeatureSource(entry, query);
+        delegate = new OGRFeatureSource(entry, query, ogr);
+        this.ogr = ogr;
     }
 
     @Override
     protected FeatureWriter<SimpleFeatureType, SimpleFeature> getWriterInternal(Query query,
             int flags) throws IOException {
-        Pointer dataSource = null;
-        Pointer layer = null;
+        Object dataSource = null;
+        Object layer = null;
         boolean cleanup = true;
         try {
             // grab the layer
@@ -67,13 +68,13 @@ class OGRFeatureStore extends ContentFeatureStore {
                     dataSource, layer, query);
             GeometryFactory gf = delegate.getGeometryFactory(query);
             OGRDirectFeatureWriter result = new OGRDirectFeatureWriter(dataSource, layer, reader,
-                    getSchema(), gf);
+                    getSchema(), gf, ogr);
             cleanup = false;
             return result;
         } finally {
             if (cleanup) {
-                OGRUtils.releaseLayer(layer);
-                OGRUtils.releaseDataSource(dataSource);
+                ogr.LayerRelease(layer);
+                ogr.DataSourceRelease(dataSource);
             }
         }
     }

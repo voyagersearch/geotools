@@ -16,14 +16,8 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.OGRUtils.*;
-import static org.geotools.data.ogr.bridj.CplErrorLibrary.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
 
-import org.bridj.Pointer;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FeatureWriter;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
@@ -49,15 +43,17 @@ class OGRDirectFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
 
     private SimpleFeature live;
 
-    private Pointer layer;
+    private Object layer;
 
-    private Pointer dataSource;
+    private Object dataSource;
 
     private FeatureMapper mapper;
 
     private boolean deletedFeatures;
 
-    private Pointer layerDefinition;
+    private Object layerDefinition;
+
+    private OGR ogr;
 
     /**
      * Creates a new direct OGR feature writer
@@ -66,29 +62,31 @@ class OGRDirectFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
      * @param featureType
      * @param layer
      */
-    public OGRDirectFeatureWriter(Pointer<?> dataSource, Pointer<?> layer,
+    public OGRDirectFeatureWriter(Object dataSource, Object layer,
             FeatureReader<SimpleFeatureType, SimpleFeature> reader,
-            SimpleFeatureType originalSchema, GeometryFactory gf) {
+            SimpleFeatureType originalSchema, GeometryFactory gf, OGR ogr) {
         this.reader = reader;
         this.featureType = reader.getFeatureType();
         this.dataSource = dataSource;
         this.layer = layer;
-        this.layerDefinition = OGR_L_GetLayerDefn(layer);
-        this.mapper = new FeatureMapper(featureType, layer, gf);
+        this.layerDefinition = ogr.LayerGetLayerDefn(layer);
+        this.mapper = new FeatureMapper(featureType, layer, gf, ogr);
         this.deletedFeatures = false;
+        this.ogr = ogr;
     }
 
     public void close() throws IOException {
         if (reader != null) {
             original = null;
             live = null;
-            Pointer<?> driver = OGR_DS_GetDriver(dataSource);
-            Pointer<Byte> driverName = OGR_Dr_GetName(driver);
-            if ("ESRI Shapefile".equals(getCString(driverName)) && deletedFeatures) {
-                String layerName = getLayerName(layer);
-                OGR_DS_ExecuteSQL(dataSource, pointerToCString("REPACK " + layerName), null, null);
+            Object driver = ogr.DataSourceGetDriver(dataSource);
+            String driverName = ogr.DriverGetName(driver); 
+
+            if ("ESRI Shapefile".equals(driverName) && deletedFeatures) {
+                String layerName = ogr.LayerGetName(layer);
+                ogr.DataSourceExecuteSQL(dataSource, "REPACK " + layerName, null);
             }
-            OGR_L_SyncToDisk(layer);
+            ogr.LayerSyncToDisk(layer);
             reader.close();
         }
     }
@@ -119,8 +117,8 @@ class OGRDirectFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
 
     public void remove() throws IOException {
         long ogrId = mapper.convertGTFID(original);
-        if (OGR_L_DeleteFeature(layer, ogrId) != 0) {
-            throw new IOException(getCString(CPLGetLastErrorMsg()));
+        if (!ogr.LayerDeleteFeature(layer, ogrId)) {
+            throw new IOException(ogr.GetLastErrorMsg());
         }
         deletedFeatures = true;
     }
@@ -135,14 +133,15 @@ class OGRDirectFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
             // nothing to do, just skip
         } else if (original != null) {
             // not equals, we're updating an existing one
-            Pointer ogrFeature = mapper.convertGTFeature(layerDefinition, live);
-            checkError(OGR_L_SetFeature(layer, ogrFeature));
+            Object ogrFeature = mapper.convertGTFeature(layerDefinition, live);
+            ogr.CheckError(ogr.LayerSetFeature(layer, ogrFeature));
         } else {
-            Pointer ogrFeature = mapper.convertGTFeature(layerDefinition, live);
-            checkError(OGR_L_CreateFeature(layer, ogrFeature));
+            Object ogrFeature = mapper.convertGTFeature(layerDefinition, live);
+
+            ogr.CheckError(ogr.LayerCreateFeature(layer, ogrFeature));
             String geotoolsId = mapper.convertOGRFID(featureType, ogrFeature);
 			((FeatureIdImpl) live.getIdentifier()).setID(geotoolsId);
-            OGR_F_Destroy(ogrFeature);
+            ogr.FeatureDestroy(ogrFeature);
         }
 
         // reset state

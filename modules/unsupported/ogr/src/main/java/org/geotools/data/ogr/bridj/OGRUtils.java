@@ -14,7 +14,7 @@
  *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *    Lesser General Public License for more details.
  */
-package org.geotools.data.ogr;
+package org.geotools.data.ogr.bridj;
 
 import static org.geotools.data.ogr.bridj.OgrLibrary.*;
 import static org.geotools.data.ogr.bridj.CplErrorLibrary.*;
@@ -90,40 +90,4 @@ class OGRUtils {
     	}
 		return getCString(namePtr);
     }
-
-    /**
-     * Checks the OGRErr status code and throws java exceptions accordingly
-     * 
-     * @param ogrError
-     * @throws IOException
-     */
-    public static void checkError(int ogrError) throws IOException {
-        if (ogrError == OGRERR_NONE) {
-            return;
-        }
-        
-        String error = getCString(CPLGetLastErrorMsg());
-
-        switch (ogrError) {
-        case OGRERR_CORRUPT_DATA:
-            throw new IOException("OGR reported a currupt data error: " + error);
-        case OGRERR_FAILURE:
-            throw new IOException("OGR reported a generic failure: " + error);
-        case OGRERR_INVALID_HANDLE:
-            throw new IOException("OGR reported an invalid handle error: " + error);
-        case OGRERR_NOT_ENOUGH_DATA:
-            throw new IOException("OGR reported not enough data was provided in the last call: " + error);
-        case OGRERR_NOT_ENOUGH_MEMORY:
-            throw new IOException("OGR reported not enough memory is available: " + error);
-        case OGRERR_UNSUPPORTED_GEOMETRY_TYPE:
-            throw new IOException("OGR reported a unsupported geometry type error: " + error);
-        case OGRERR_UNSUPPORTED_OPERATION:
-            throw new IOException("OGR reported a unsupported operation error: " + error);
-        case OGRERR_UNSUPPORTED_SRS:
-            throw new IOException("OGR reported a unsupported SRS error: " + error);
-        default:
-            throw new IOException("OGR reported an unrecognized error code: " + ogrError);
-        }
-    }
-
 }

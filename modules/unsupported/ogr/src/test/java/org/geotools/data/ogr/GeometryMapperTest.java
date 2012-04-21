@@ -1,11 +1,5 @@
 package org.geotools.data.ogr;
 
-import static org.geotools.data.ogr.bridj.OgrLibrary.OGR_G_DestroyGeometry;
-
-import java.io.IOException;
-
-import org.bridj.Pointer;
-
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.io.WKTReader;
@@ -15,13 +9,12 @@ import com.vividsolutions.jts.io.WKTReader;
  *
  * @source $URL$
  */
-public class GeometryMapperTest extends TestCaseSupport {
-    
-	GeometryFactory gf = new GeometryFactory();
+public abstract class GeometryMapperTest extends TestCaseSupport {
 
-    @Override
-    protected void setUp() throws Exception {
-        GdalInit.init();
+    GeometryFactory gf = new GeometryFactory();
+
+    protected GeometryMapperTest(OGRDataStoreFactory dataStoreFactory) {
+        super(dataStoreFactory);
     }
 
     public void testLine() throws Exception {
@@ -37,17 +30,20 @@ public class GeometryMapperTest extends TestCaseSupport {
     }
     
     void checkRoundTrip(String geometryWkt) throws Exception {
-        checkRoundTrip(geometryWkt, new GeometryMapper.WKB(gf));
-        checkRoundTrip(geometryWkt, new GeometryMapper.WKT(gf));
+        checkRoundTrip(geometryWkt, new GeometryMapper.WKB(gf, dataStoreFactory.getOGR()));
+        checkRoundTrip(geometryWkt, new GeometryMapper.WKT(gf, dataStoreFactory.getOGR()));
     }
 
     void checkRoundTrip(String geometryWkt, GeometryMapper mapper) throws Exception {
         Geometry geometry = new WKTReader().read(geometryWkt);
 
         // to ogr and back
-        Pointer ogrGeometry = mapper.parseGTGeometry(geometry);
+        OGR ogr = dataStoreFactory.getOGR();
+        
+        Object ogrGeometry = mapper.parseGTGeometry(geometry);
         Geometry remapped = mapper.parseOgrGeometry(ogrGeometry);
-        OGR_G_DestroyGeometry(ogrGeometry);
+
+        ogr.GeometryDestroy(ogrGeometry);
 
         assertEquals(geometry, remapped);
     }

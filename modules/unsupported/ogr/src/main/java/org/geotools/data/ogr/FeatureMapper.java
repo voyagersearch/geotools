@@ -16,9 +16,6 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -28,13 +25,9 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.TimeZone;
 
-import org.bridj.Pointer;
 import org.geotools.data.DataSourceException;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRFieldType;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
 import org.geotools.util.Converters;
 import org.opengis.feature.simple.SimpleFeature;
@@ -77,26 +70,28 @@ class FeatureMapper {
     DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss");
 
     HashMap<String, Integer> attributeIndexes;
-    
+
+    OGR ogr;
+
     /**
      * TODO: this is subscepitble to changes to the Locale in Java that might not affect
      * the C code... we should probably figure out a way to get the OS level locale?
      */
     static final DecimalFormatSymbols DECIMAL_SYMBOLS = new DecimalFormatSymbols(); 
 
-    public FeatureMapper(SimpleFeatureType targetSchema, Pointer layer, GeometryFactory geomFactory) {
+    public FeatureMapper(SimpleFeatureType targetSchema, Object layer, GeometryFactory geomFactory, OGR ogr) {
         this.schema = targetSchema;
         this.builder = new SimpleFeatureBuilder(schema);
-        this.geomMapper = new GeometryMapper.WKB(geomFactory);
+        this.geomMapper = new GeometryMapper.WKB(geomFactory, ogr);
         this.geomFactory = geomFactory;
-        
+        this.ogr = ogr;
+
         attributeIndexes = new HashMap<String, Integer>();
-        Pointer layerDefinition = OGR_L_GetLayerDefn(layer);
-        int size = OGR_FD_GetFieldCount(layerDefinition);
+        Object layerDefinition = ogr.LayerGetLayerDefn(layer);
+        int size = ogr.LayerGetFieldCount(layerDefinition);
         for(int i = 0; i < size; i++) {
-            Pointer  field = OGR_FD_GetFieldDefn(layerDefinition, i);
-            Pointer<Byte> namePtr = OGR_Fld_GetNameRef(field);
-            String name = namePtr.getCString();
+            Object field = ogr.LayerGetFieldDefn(layerDefinition, i);
+            String name = ogr.FieldGetName(field);
             if(targetSchema.getDescriptor(name) != null) {
                 attributeIndexes.put(name, i);
             }
@@ -111,7 +106,7 @@ class FeatureMapper {
      * @return
      * @throws IOException
      */
-    SimpleFeature convertOgrFeature(Pointer<?> ogrFeature)
+    SimpleFeature convertOgrFeature(Object ogrFeature)
             throws IOException {
         // Extract all attributes (do not assume any specific order, the feature
         // type may have been re-ordered by the Query)
@@ -138,11 +133,11 @@ class FeatureMapper {
      * @return
      * @throws DataSourceException
      */
-    Pointer convertGTFeature(Pointer featureDefinition, SimpleFeature feature)
+    Object convertGTFeature(Object featureDefinition, SimpleFeature feature)
             throws IOException {
         // create a new empty OGR feature
-        Pointer ogrFeature = OGR_F_Create(featureDefinition);
-
+        Object ogrFeature = ogr.LayerNewFeature(featureDefinition); 
+                
         // go thru GeoTools feature attributes, and convert
         SimpleFeatureType schema = feature.getFeatureType();
         for (int i = 0, j = 0; i < schema.getAttributeCount(); i++) {
@@ -150,10 +145,10 @@ class FeatureMapper {
             if (attribute instanceof Geometry) {
                 // using setGeoemtryDirectly the feature becomes the owner of the generated
                 // OGR geometry and we don't have to .delete() it (it's faster, too)
-                Pointer geometry = geomMapper.parseGTGeometry((Geometry) attribute);
-                OGR_F_SetGeometryDirectly(ogrFeature, geometry);
+                Object geometry = geomMapper.parseGTGeometry((Geometry) attribute);
+                ogr.FeatureSetGeometryDirectly(ogrFeature, geometry);
             } else {
-                setFieldValue(featureDefinition, ogrFeature, j, attribute);
+                setFieldValue(featureDefinition, ogrFeature, j, attribute, ogr);
                 j++;
             }
         }
@@ -161,35 +156,35 @@ class FeatureMapper {
         return ogrFeature;
     }
 
-    static void setFieldValue(Pointer featureDefinition, Pointer ogrFeature, int fieldIdx,
-            Object value) throws IOException {
+    static void setFieldValue(Object featureDefinition, Object ogrFeature, int fieldIdx,
+            Object value, OGR ogr) throws IOException {
          if (value == null) {
-            OGR_F_UnsetField(ogrFeature, fieldIdx);
+             ogr.FeatureUnsetField(ogrFeature, fieldIdx);
         } else {
-            Pointer fieldDefinition = OGR_FD_GetFieldDefn(featureDefinition, fieldIdx);
-            long ogrType = OGR_Fld_GetType(fieldDefinition).value();
-            if (ogrType == OGRFieldType.OFTInteger.value()) {
-                OGR_F_SetFieldInteger(ogrFeature, fieldIdx, ((Number) value).intValue());
-            } else if (ogrType == OGRFieldType.OFTReal.value()) {
-                OGR_F_SetFieldDouble(ogrFeature, fieldIdx, ((Number) value).doubleValue());
-            } else if (ogrType == OGRFieldType.OFTBinary.value()) {
+            Object fieldDefinition = ogr.LayerGetFieldDefn(featureDefinition, fieldIdx);
+            long ogrType = ogr.FieldGetType(fieldDefinition);
+            if (ogr.FieldIsIntegerType(ogrType)) {
+                ogr.FeatureSetFieldInteger(ogrFeature, fieldIdx, ((Number)value).intValue());
+            } else if (ogr.FieldIsRealType(ogrType)) {
+                ogr.FeatureSetFieldDouble(ogrFeature, fieldIdx, ((Number) value).doubleValue());
+            } else if (ogr.FieldIsBinaryType(ogrType)) {
                 byte[] attValue = (byte[]) value;
-                OGR_F_SetFieldBinary(ogrFeature, fieldIdx, attValue.length, pointerToBytes(attValue));
-            } else if (ogrType == OGRFieldType.OFTDate.value()) {
+                ogr.FeatureSetFieldBinary(ogrFeature, fieldIdx, attValue.length, attValue);
+            } else if (ogr.FieldIsDateType(ogrType)) {
                 Calendar cal = Calendar.getInstance();
                 cal.setTime((Date) value);
                 int year = cal.get(Calendar.YEAR);
                 int month = cal.get(Calendar.MONTH);
                 int day = cal.get(Calendar.DAY_OF_MONTH);
-                OGR_F_SetFieldDateTime(ogrFeature, fieldIdx, year, month, day, 0, 0, 0, 0);
-            } else if (ogrType == OGRFieldType.OFTTime.value()) {
+                ogr.FeatureSetFieldDateTime(ogrFeature, fieldIdx, year, month, day, 0, 0, 0, 0);
+            } else if (ogr.FieldIsTimeType(ogrType)) {
                 Calendar cal = Calendar.getInstance();
                 cal.setTime((Date) value);
                 int hour = cal.get(Calendar.HOUR_OF_DAY);
                 int minute = cal.get(Calendar.MINUTE);
                 int second = cal.get(Calendar.SECOND);
-                OGR_F_SetFieldDateTime(ogrFeature, fieldIdx, 0, 0, 0, hour, minute, second, 0);
-            } else if (ogrType == OGRFieldType.OFTDateTime.value()) {
+                ogr.FeatureSetFieldDateTime(ogrFeature, fieldIdx, 0, 0, 0, hour, minute, second, 0);
+            } else if (ogr.FieldIsDateTimeType(ogrType)) {
                 Calendar cal = Calendar.getInstance();
                 cal.setTime((Date) value);
                 int year = cal.get(Calendar.YEAR);
@@ -198,11 +193,11 @@ class FeatureMapper {
                 int hour = cal.get(Calendar.HOUR_OF_DAY);
                 int minute = cal.get(Calendar.MINUTE);
                 int second = cal.get(Calendar.SECOND);
-                OGR_F_SetFieldDateTime(ogrFeature, fieldIdx, year, month, day, hour, minute, second, 0);
+                ogr.FeatureSetFieldDateTime(ogrFeature, fieldIdx, year, month, day, hour, minute, second, 0);
             } else {
                 // anything else we treat as a string
                 String str = Converters.convert(value, String.class);
-                OGR_F_SetFieldString(ogrFeature, fieldIdx, pointerToCString(str));
+                ogr.FeatureSetFieldString(ogrFeature, fieldIdx, str);
             }
         }
     }
@@ -241,42 +236,43 @@ class FeatureMapper {
      * @param ad
      * @return
      */
-    Object getOgrField(AttributeDescriptor ad, Pointer<?> ogrFeature) throws IOException {
+    Object getOgrField(AttributeDescriptor ad, Object ogrFeature) throws IOException {
         if(ad instanceof GeometryDescriptor) {
             // gets the geometry as a reference, we don't own it, we should not deallocate it
-            Pointer<?> ogrGeometry = OGR_F_GetGeometryRef(ogrFeature);
+            Object ogrGeometry = ogr.FeatureGetGeometry(ogrFeature);
             return fixGeometryType(geomMapper.parseOgrGeometry(ogrGeometry), ad);
         }
         
         Integer idx = attributeIndexes.get(ad.getLocalName());
 
         // check for null fields
-        if (idx == null || OGR_F_IsFieldSet(ogrFeature, idx) == 0) {
+        if (idx == null || !ogr.FeatureIsFieldSet(ogrFeature, idx)) {
             return null;
         }
 
         // hum, ok try and parse it
         Class clazz = ad.getType().getBinding();
         if (clazz.equals(String.class)) {
-            return  OGR_F_GetFieldAsString(ogrFeature, idx).getCString();
+            return  ogr.FeatureGetFieldAsString(ogrFeature, idx);
         } else if (clazz.equals(Byte.class)) {
-            return (byte) OGR_F_GetFieldAsInteger(ogrFeature, idx);
+            return (byte) ogr.FeatureGetFieldAsInteger(ogrFeature, idx);
         } else if (clazz.equals(Short.class)) {
-            return (short) OGR_F_GetFieldAsInteger(ogrFeature, idx);
+            //return (short) OGR_F_GetFieldAsInteger(ogrFeature, idx);
+            return (short) ogr.FeatureGetFieldAsInteger(ogrFeature, idx);
         } else if (clazz.equals(Integer.class)) {
-            return OGR_F_GetFieldAsInteger(ogrFeature, idx);
+            return ogr.FeatureGetFieldAsInteger(ogrFeature, idx);
         } else if (clazz.equals(Long.class)) {
-            String value = OGR_F_GetFieldAsString(ogrFeature, idx).getCString();
+            String value = ogr.FeatureGetFieldAsString(ogrFeature, idx);
             return new Long(value);
         } else if (clazz.equals(BigInteger.class)) {
-            String value = OGR_F_GetFieldAsString(ogrFeature, idx).getCString();
+            String value = ogr.FeatureGetFieldAsString(ogrFeature, idx);
             return new BigInteger(value);
         } else if (clazz.equals(Double.class)) {
-            return OGR_F_GetFieldAsDouble(ogrFeature, idx);
+            return ogr.FeatureGetFieldAsDouble(ogrFeature, idx);
         } else if (clazz.equals(Float.class)) {
-            return (float) OGR_F_GetFieldAsDouble(ogrFeature, idx);
+            return (float) ogr.FeatureGetFieldAsDouble(ogrFeature, idx);
         } else if (clazz.equals(BigDecimal.class)) {
-            String value = OGR_F_GetFieldAsString(ogrFeature, idx).getCString().trim();
+            String value = ogr.FeatureGetFieldAsString(ogrFeature, idx).trim();
             char separator = DECIMAL_SYMBOLS.getDecimalSeparator();
             if(separator != '.') {
                 value = value.replace(separator, '.');
@@ -312,21 +308,21 @@ class FeatureMapper {
      * @param idx
      * @return
      */
-    private Calendar getDateField(Pointer<?> ogrFeature, Integer idx) {
-        Pointer<Integer> year = allocateInt();
-        Pointer<Integer> month = allocateInt();
-        Pointer<Integer> day = allocateInt();
-        Pointer<Integer> hour = allocateInt();
-        Pointer<Integer> minute = allocateInt();
-        Pointer<Integer> second = allocateInt();
-        Pointer<Integer> timeZone = allocateInt();
-        
-        OGR_F_GetFieldAsDateTime(ogrFeature, idx, year, month, day, hour, minute, second, timeZone);
-        
+    private Calendar getDateField(Object ogrFeature, Integer idx) {
+        int[] year = new int[1];
+        int[] month = new int[1];
+        int[] day = new int[1];
+        int[] hour = new int[1];
+        int[] minute = new int[1];
+        int[] second = new int[1];
+        int[] timeZone = new int[1];
+
+        ogr.FeatureGetFieldAsDateTime(ogrFeature, idx, year, month, day, hour, minute, second, timeZone);
+
         Calendar cal = Calendar.getInstance();
         // from ogr_core.h 
         // 0=unknown, 1=localtime(ambiguous), 100=GMT, 104=GMT+1, 80=GMT-5, etc
-        int tz = timeZone.getInt();
+        int tz = timeZone[0];
         if(tz != 0 && tz != 1) {
             int offset = tz - 100 / 4;
             if(offset < 0) {
@@ -338,12 +334,12 @@ class FeatureMapper {
             }               
         }
         cal.clear();
-        cal.set(Calendar.YEAR, year.getInt());
-        cal.set(Calendar.MONTH, month.getInt());
-        cal.set(Calendar.DAY_OF_MONTH, day.getInt());
-        cal.set(Calendar.HOUR_OF_DAY, hour.getInt());
-        cal.set(Calendar.MINUTE, minute.getInt());
-        cal.set(Calendar.SECOND, second.getInt());
+        cal.set(Calendar.YEAR, year[0]);
+        cal.set(Calendar.MONTH, month[0]);
+        cal.set(Calendar.DAY_OF_MONTH, day[0]);
+        cal.set(Calendar.HOUR_OF_DAY, hour[0]);
+        cal.set(Calendar.MINUTE, minute[0]);
+        cal.set(Calendar.SECOND, second[0]);
         return cal;
     }
 
@@ -354,8 +350,8 @@ class FeatureMapper {
      * @param ogrFeature
      * @return
      */
-    String convertOGRFID(SimpleFeatureType schema, Pointer<?> ogrFeature) {
-        long id = OGR_F_GetFID(ogrFeature);
+    String convertOGRFID(SimpleFeatureType schema, Object ogrFeature) {
+        long id = ogr.FeatureGetFID(ogrFeature);
         return schema.getTypeName() + "." + id;
     }
 

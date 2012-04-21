@@ -16,12 +16,9 @@
  */
 package org.geotools.data.ogr;
 
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
 import java.util.NoSuchElementException;
 
-import org.bridj.Pointer;
 import org.geotools.data.FeatureReader;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
@@ -40,42 +37,46 @@ import com.vividsolutions.jts.geom.GeometryFactory;
  */
 class OGRFeatureReader implements FeatureReader<SimpleFeatureType, SimpleFeature> {
 
-    Pointer<?> dataSource;
+    Object dataSource;
 
-    Pointer<?> layer;
+    Object layer;
 
     SimpleFeatureType schema;
 
-    Pointer<?> curr;
+    Object curr;
 
     private FeatureMapper mapper;
 
     boolean layerCompleted;
 
-    public OGRFeatureReader(Pointer<?> dataSource, Pointer<?> layer,
-            SimpleFeatureType targetSchema, SimpleFeatureType originalSchema, GeometryFactory gf) {
+    OGR ogr;
+
+    public OGRFeatureReader(Object dataSource, Object layer,
+            SimpleFeatureType targetSchema, SimpleFeatureType originalSchema, GeometryFactory gf, OGR ogr) {
         this.dataSource = dataSource;
         this.layer = layer;
         this.schema = targetSchema;
-        OGR_L_ResetReading(layer);
-        this.layerCompleted = false;
-        this.mapper = new FeatureMapper(targetSchema, layer, gf);
 
+        ogr.LayerResetReading(layer);
+
+        this.layerCompleted = false;
+        this.mapper = new FeatureMapper(targetSchema, layer, gf, ogr);
+        this.ogr = ogr;
         // TODO: mark as ignored all the fields we don't want to handle, as well as ignoring
         // the per feature style, assuming the caps say we can
     }
 
     public void close() throws IOException {
         if (curr != null) {
-            OGR_F_Destroy(curr);
+            ogr.FeatureDestroy(curr);
             curr = null;
         }
         if (layer != null) {
-            OGRUtils.releaseLayer(layer);
+            ogr.LayerRelease(layer);
             layer = null;
         }
         if (dataSource != null) {
-            OGRUtils.releaseDataSource(dataSource);
+            ogr.DataSourceRelease(dataSource);
             dataSource = null;
         }
         schema = null;
@@ -98,7 +99,7 @@ class OGRFeatureReader implements FeatureReader<SimpleFeatureType, SimpleFeature
         }
 
         if (curr == null) {
-            curr = OGR_L_GetNextFeature(layer);
+            curr = ogr.LayerGetNextFeature(layer);
         }
         if (curr != null) {
             return true;
@@ -115,7 +116,7 @@ class OGRFeatureReader implements FeatureReader<SimpleFeatureType, SimpleFeature
         SimpleFeature f = mapper.convertOgrFeature(curr);
 
         // .. nullify curr, so that we can move to the next one
-        OGR_F_Destroy(curr);
+        ogr.FeatureDestroy(curr);
         curr = null;
 
         return f;

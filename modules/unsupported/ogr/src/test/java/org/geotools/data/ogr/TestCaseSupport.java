@@ -69,13 +69,30 @@ public abstract class TestCaseSupport extends TestCase {
     //protected static boolean verbose = false;
 
     /**
+     * the data store factory
+     */
+    protected OGRDataStoreFactory dataStoreFactory;
+
+    /**
+     * the ogr interface
+     */
+    protected OGR ogr;
+
+    /**
      * Stores all temporary files here - delete on tear down.
      */
     private final List tmpFiles = new ArrayList();
 
-	private static Boolean AVAILABLE;
+    /**
+     * availability flag that tracks if ogr library is available
+     */
+    private static Boolean AVAILABLE;
 
-    
+    protected TestCaseSupport(OGRDataStoreFactory dataStoreFactory) {
+        this.dataStoreFactory = dataStoreFactory;
+        this.ogr = dataStoreFactory.getOGR();
+    }
+
     /**
      * Override which checks if the fixture is available. If not the test is not
      * executed.
@@ -85,24 +102,24 @@ public abstract class TestCaseSupport extends TestCase {
         if (gdalAvailable()) {
             super.run(result);
         } else {
-        	System.out.println("Skipping tests " + result.toString() + " since GDAL is not available");
+            System.out.println("Skipping tests " + result.toString() + " since GDAL is not available");
         }
     }
 
     private boolean gdalAvailable() {
-		if(AVAILABLE == null) {
-			try {
-				GdalInit.init();
-				AVAILABLE = true;
-			} catch(Exception e) {
-				AVAILABLE = false;
-				System.out.println("Failed to initialize GDAL, error is: " + e);
-			}
-		}
-		return AVAILABLE;
-	}
+        if (AVAILABLE == null) {
+            try {
+                dataStoreFactory.isAvailable(false);
+                AVAILABLE = true;
+            } catch (Throwable e) {
+                AVAILABLE = false;
+                System.out.println("Failed to initialize GDAL, error is: " + e);
+            }
+        }
+        return AVAILABLE;
+    }
 
-	/**
+    /**
      * Deletes all temporary files created by {@link #getTempFile}.
      * This method is automatically run after each test.
      */
@@ -256,7 +273,7 @@ public abstract class TestCaseSupport extends TestCase {
      * @return
      */
     protected boolean ogrSupports(String format) {
-        return OGRDataStoreFactory.getAvailableDrivers().contains(format);
+        return dataStoreFactory.getAvailableDrivers().contains(format);
     }
 
 }

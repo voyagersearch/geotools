@@ -16,9 +16,7 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-import static org.geotools.data.ogr.OGRUtils.*;
+import static org.geotools.data.ogr.bridj.OgrLibrary.OGRGetDriverCount;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -29,11 +27,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.bridj.Pointer;
 import org.geotools.data.DataSourceException;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFactorySpi;
+import org.geotools.util.logging.Logging;
 
 /**
  * Implementation of the DataStore service provider interface for OGR.
@@ -46,7 +47,10 @@ import org.geotools.data.DataStoreFactorySpi;
  * @version $Id$
  */
 @SuppressWarnings("rawtypes")
-public class OGRDataStoreFactory implements DataStoreFactorySpi {
+public abstract class OGRDataStoreFactory implements DataStoreFactorySpi {
+
+    protected static Logger LOGGER = Logging.getLogger("org.geotools.data.ogr");
+
     public static final Param OGR_NAME = new Param("DatasourceName", String.class,
             "Name of the file, or data source to try and open", true);
 
@@ -59,14 +63,7 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
     public static final Param NAMESPACEP = new Param("namespace", URI.class,
             "uri to a the namespace", false); // not required
 
-    static {
-        GdalInit.init();
-
-        // perform OGR format registration once
-        if (OGRGetDriverCount() == 0) {
-            OGRRegisterAll();
-        }
-    }
+    private OGR ogr;
 
     /**
      * Caches opened data stores. TODO: is this beneficial or problematic? It's a static cache, so
@@ -74,6 +71,16 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
      * Plus OGR is not designed to be thread safe.
      */
     private Map liveStores = new HashMap();
+
+    public OGRDataStoreFactory() {
+        ogr = createOGR();
+    }
+
+    public OGR getOGR() {
+        return ogr;
+    }
+
+    protected abstract OGR createOGR();
 
     public boolean canProcess(Map params) {
         boolean accept = false;
@@ -127,7 +134,7 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
         String ogrName = (String) OGR_NAME.lookUp(params);
         String ogrDriver = (String) OGR_DRIVER_NAME.lookUp(params);
         URI namespace = (URI) NAMESPACEP.lookUp(params);
-        ds = new OGRDataStore(ogrName, ogrDriver, namespace);
+        ds = new OGRDataStore(ogrName, ogrDriver, namespace, ogr);
 
         return ds;
     }
@@ -148,20 +155,45 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
 
     /**
      * Test to see if this datastore is available, if it has all the appropriate libraries to
-     * construct a datastore. This datastore just returns true for now.
+     * construct a datastore.
      * 
      * @return <tt>true</tt> if and only if this factory is available to create DataStores.
      * 
      * @task REVISIT: I'm just adding this method to compile, maintainer should revisit to check for
      *       any libraries that may be necessary for datastore creations.
      */
-    public boolean isAvailable() {
+    public final boolean isAvailable() {
+        return isAvailable(true);
+    }
+
+    /**
+     * Performs the available test specifying how to handle errors. 
+     * <p>
+     * Specifying true for <tt>handleError</tt> will cause any exceptions to be caught and logged, 
+     * and return false
+     * </p>
+     */
+    public final boolean isAvailable(boolean handleError) {
         try {
-            return OGRGetDriverCount() > 0;
+            return doIsAvailable();
         } catch (Throwable t) {
-            return false;
+            if (handleError) {
+                LOGGER.log(Level.FINE, "Error initializing GDAL/OGR library", t);
+                return false;
+            }
+            else {
+                throw new RuntimeException(t);
+            }
         }
     }
+
+    /**
+     * Performs the actual test to see if the OGR library and this datastore is available.
+     * <p>
+     * Implemetnations of this method should not attempt to handle any fatal exceptions.
+     * </p>
+     */
+    protected abstract boolean doIsAvailable() throws Throwable;
 
     /**
      * Describe parameters.
@@ -182,13 +214,16 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
      * @return
      */
     public boolean canProcess(String ogrName, String driverName) {
-        Pointer dataset = OGROpenShared(pointerToCString(ogrName), 0, null);
+        Object dataset = ogr.OpenShared(ogrName, 0);
+
         if (dataset != null) {
-            OGRReleaseDataSource(dataset);
+            //OGRReleaseDataSource(dataset);
+            ogr.DataSourceRelease(dataset);
             return true;
         }
 
-        Pointer driver = OGRGetDriverByName(pointerToCString(driverName));
+        Object driver = ogr.GetDriverByName(driverName);
+
         if (driver != null) {
             return true;
         }
@@ -197,12 +232,12 @@ public class OGRDataStoreFactory implements DataStoreFactorySpi {
 
     }
     
-    public static Set<String> getAvailableDrivers() {
-        int count = OGRGetDriverCount();
+    public Set<String> getAvailableDrivers() {
+        int count = ogr.GetDriverCount();
         Set<String> result = new HashSet<String>();
         for (int i = 0; i < count; i++) {
-            Pointer driver = OGRGetDriver(i);
-            String name = getCString(OGR_Dr_GetName(driver));
+            Object driver = ogr.GetDriver(i);
+            String name = ogr.DriverGetName(driver);
             result.add(name);
         }
         

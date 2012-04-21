@@ -16,9 +16,6 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,13 +23,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.bridj.Pointer;
 import org.geotools.data.EmptyFeatureReader;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FilteringFeatureReader;
 import org.geotools.data.Query;
 import org.geotools.data.ReTypeFeatureReader;
-import org.geotools.data.ogr.bridj.OGREnvelope;
 import org.geotools.data.store.ContentEntry;
 import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.data.store.ContentFeatureStore;
@@ -63,8 +58,11 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 @SuppressWarnings("rawtypes")
 class OGRFeatureSource extends ContentFeatureSource {
 
-    public OGRFeatureSource(ContentEntry entry, Query query) {
+    OGR ogr;
+
+    public OGRFeatureSource(ContentEntry entry, Query query, OGR ogr) {
         super(entry, query);
+        this.ogr = ogr;
     }
 
     @Override
@@ -86,8 +84,8 @@ class OGRFeatureSource extends ContentFeatureSource {
             return null;
         } else {
             // encodable, we then encode and get the bounds
-            Pointer dataSource = null;
-            Pointer layer = null;
+            Object dataSource = null;
+            Object layer = null;
 
             try {
                 // grab the layer
@@ -98,18 +96,15 @@ class OGRFeatureSource extends ContentFeatureSource {
                 // filter it
                 setLayerFilters(layer, filterTx);
 
-                Pointer<OGREnvelope> boundsPtr = allocate(OGREnvelope.class);
-                int code = OGR_L_GetExtent(layer, boundsPtr, 0);
-                if (code == OGRERR_FAILURE) {
+                Object extent = ogr.LayerGetExtent(layer);
+                if (extent == null) {
                     return null;
-                } else {
-                    OGREnvelope bounds = boundsPtr.get();
-                    return new ReferencedEnvelope(bounds.MinX(), bounds.MaxX(), bounds.MinY(),
-                            bounds.MaxY(), crs);
                 }
+                return ogr.toEnvelope(extent, crs);
+
             } finally {
-                OGRUtils.releaseLayer(layer);
-                OGRUtils.releaseDataSource(dataSource);
+                ogr.LayerRelease(layer);
+                ogr.DataSourceRelease(dataSource);
             }
         }
     }
@@ -121,17 +116,17 @@ class OGRFeatureSource extends ContentFeatureSource {
      * @param filterTx
      * @throws IOException
      */
-    private void setLayerFilters(Pointer layer, OGRFilterTranslator filterTx) throws IOException {
+    private void setLayerFilters(Object layer, OGRFilterTranslator filterTx) throws IOException {
         Geometry spatialFilter = filterTx.getSpatialFilter();
         if (spatialFilter != null) {
-            Pointer ogrGeometry = new GeometryMapper.WKB(new GeometryFactory())
+            Object ogrGeometry = new GeometryMapper.WKB(new GeometryFactory(), ogr)
                     .parseGTGeometry(spatialFilter);
-            OGR_L_SetSpatialFilter(layer, ogrGeometry);
+            ogr.LayerSetSpatialFilter(layer, ogrGeometry);
         }
 
         String attFilter = filterTx.getAttributeFilter();
         if (attFilter != null) {
-            OGR_L_SetAttributeFilter(layer, pointerToCString(attFilter));
+            ogr.LayerSetAttributeFilter(layer, attFilter);
         }
     }
 
@@ -146,8 +141,8 @@ class OGRFeatureSource extends ContentFeatureSource {
             return -1;
         } else {
             // encode and count
-            Pointer dataSource = null;
-            Pointer layer = null;
+            Object dataSource = null;
+            Object layer = null;
 
             try {
                 // grab the layer
@@ -158,10 +153,10 @@ class OGRFeatureSource extends ContentFeatureSource {
                 // filter it
                 setLayerFilters(layer, filterTx);
 
-                return OGR_L_GetFeatureCount(layer, 0);
+                return (int) ogr.LayerGetFeatureCount(layer);
             } finally {
-                OGRUtils.releaseLayer(layer);
-                OGRUtils.releaseDataSource(dataSource);
+                ogr.LayerRelease(layer);
+                ogr.DataSourceRelease(dataSource);
             }
         }
     }
@@ -172,8 +167,8 @@ class OGRFeatureSource extends ContentFeatureSource {
         return getReaderInternal(null, null, query);
     }
 
-    protected FeatureReader<SimpleFeatureType, SimpleFeature> getReaderInternal(Pointer dataSource,
-            Pointer layer, Query query) throws IOException {
+    protected FeatureReader<SimpleFeatureType, SimpleFeature> getReaderInternal(Object dataSource,
+            Object layer, Query query) throws IOException {
         // check how much we can encode
         OGRFilterTranslator filterTx = new OGRFilterTranslator(getSchema(), query.getFilter());
         if (Filter.EXCLUDE.equals(filterTx.getFilter())) {
@@ -231,14 +226,14 @@ class OGRFeatureSource extends ContentFeatureSource {
             if (layer == null) {
                 String sql = getLayerSql(querySchema == sourceSchema ? null : querySchema,
                         filterTx.getAttributeFilter(), query.getSortBy());
-                Pointer spatialFilterPtr = null;
+                Object spatialFilterPtr = null;
                 Geometry spatialFilter = filterTx.getSpatialFilter();
                 if (spatialFilter != null) {
-                    spatialFilterPtr = new GeometryMapper.WKB(new GeometryFactory())
+                    spatialFilterPtr = new GeometryMapper.WKB(new GeometryFactory(), ogr)
                             .parseGTGeometry(spatialFilter);
 
                 }
-                layer = OGR_DS_ExecuteSQL(dataSource, pointerToCString(sql), spatialFilterPtr, null);
+                layer = ogr.DataSourceExecuteSQL(dataSource, sql, spatialFilterPtr);
                 if (layer == null) {
                     throw new IOException("Failed to query the source layer with SQL: " + sql);
                 }
@@ -253,7 +248,7 @@ class OGRFeatureSource extends ContentFeatureSource {
 
             // build the reader
             FeatureReader<SimpleFeatureType, SimpleFeature> reader = new OGRFeatureReader(
-                    dataSource, layer, querySchema, sourceSchema, gf);
+                    dataSource, layer, querySchema, sourceSchema, gf, ogr);
             cleanup = false;
 
             // do we have to post-filter?
@@ -268,15 +263,15 @@ class OGRFeatureSource extends ContentFeatureSource {
             return reader;
         } finally {
             if (cleanup) {
-                OGRUtils.releaseLayer(layer);
-                OGRUtils.releaseDataSource(dataSource);
+                ogr.LayerRelease(layer);
+                ogr.DataSourceRelease(dataSource);
             }
         }
     }
 
-    void setIgnoredFields(Pointer layer, SimpleFeatureType querySchema,
+    void setIgnoredFields(Object layer, SimpleFeatureType querySchema,
             SimpleFeatureType sourceSchema) throws IOException {
-        if (OGR_L_TestCapability(layer, pointerToCString(OLCIgnoreFields)) != 0) {
+        if (ogr.LayerCanIgnoreFields(layer)) {
             List<String> ignoredFields = new ArrayList<String>();
             ignoredFields.add("OGR_STYLE");
             // if no geometry, skip it
@@ -297,8 +292,7 @@ class OGRFeatureSource extends ContentFeatureSource {
                 ignoredFields.add(null);
                 String[] ignoredFieldsArr = (String[]) ignoredFields
                         .toArray(new String[ignoredFields.size()]);
-                Pointer<Pointer<Byte>> ifPtr = pointerToCStrings(ignoredFieldsArr);
-                OGRUtils.checkError(OGR_L_SetIgnoredFields(layer, ifPtr));
+                ogr.CheckError(ogr.LayerSetIgnoredFields(layer, ignoredFieldsArr));
             }
         }
 
@@ -380,8 +374,8 @@ class OGRFeatureSource extends ContentFeatureSource {
         String typeName = getEntry().getTypeName();
         String namespaceURI = getDataStore().getNamespaceURI();
 
-        Pointer dataSource = null;
-        Pointer layer = null;
+        Object dataSource = null;
+        Object layer = null;
         try {
             // grab the layer definition
             dataSource = getDataStore().openOGRDataSource(false);
@@ -390,8 +384,8 @@ class OGRFeatureSource extends ContentFeatureSource {
             // map to geotools feature type
             return new FeatureTypeMapper().getFeatureType(layer, typeName, namespaceURI);
         } finally {
-            OGRUtils.releaseLayer(layer);
-            OGRUtils.releaseDataSource(dataSource);
+            ogr.LayerRelease(layer);
+            ogr.DataSourceRelease(dataSource);
         }
 
     }

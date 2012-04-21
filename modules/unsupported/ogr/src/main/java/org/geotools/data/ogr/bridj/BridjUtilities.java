@@ -16,4 +16,13 @@ public class BridjUtilities {
             return ptr.getCString();
         }
     }
+
+    public static Pointer<Pointer<Byte>> pointerToCStrings(String[] strings) {
+        Pointer<Pointer<Byte>> p = null; 
+        if (strings != null && strings.length > 0) {
+            p = Pointer.pointerToCStrings(strings);
+        }
+        return p;
+    }
+   
 }

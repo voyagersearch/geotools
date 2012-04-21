@@ -16,19 +16,10 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-import static org.geotools.data.ogr.bridj.OsrLibrary.*;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-import org.bridj.Pointer;
-import org.bridj.ValuedEnum;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRFieldType;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRJustification;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRwkbGeometryType;
 import org.geotools.feature.FeatureTypes;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.feature.type.BasicFeatureTypes;
@@ -55,6 +46,8 @@ import com.vividsolutions.jts.geom.Polygon;
  */
 class FeatureTypeMapper {
 
+    OGR ogr;
+
     /**
      * Returns the geotools feature type equivalent from the native OGR one
      * 
@@ -64,9 +57,9 @@ class FeatureTypeMapper {
      * @return
      * @throws IOException
      */
-    SimpleFeatureType getFeatureType(Pointer layer, String typeName, String namespaceURI)
+    SimpleFeatureType getFeatureType(Object layer, String typeName, String namespaceURI)
             throws IOException {
-        Pointer definition = null;
+        Object definition = null;
         try {
             // setup the builder
             SimpleFeatureTypeBuilder tb = new SimpleFeatureTypeBuilder();
@@ -77,7 +70,7 @@ class FeatureTypeMapper {
             }
 
             // grab the layer definition
-            definition = OGR_L_GetLayerDefn(layer);
+            definition = ogr.LayerGetLayerDefn(layer);
 
             // figure out the geometry
             Class<? extends Geometry> geometryBinding = getGeometryBinding(definition);
@@ -87,12 +80,12 @@ class FeatureTypeMapper {
             }
 
             // get the non geometric fields
-            final int count = OGR_FD_GetFieldCount(definition);
+            final int count = ogr.LayerGetFieldCount(definition);
             for (int i = 0; i < count; i++) {
-                Pointer field = OGR_FD_GetFieldDefn(definition, i);
-                String name = OGR_Fld_GetNameRef(field).getCString();
+                Object field = ogr.LayerGetFieldDefn(definition, i);
+                String name = ogr.FieldGetName(field);
                 Class binding = getBinding(field);
-                int width = OGR_Fld_GetWidth(field);
+               int width = ogr.FieldGetWidth(field);
                 if (width > 0) {
                     tb.length(width);
                 }
@@ -112,7 +105,7 @@ class FeatureTypeMapper {
 
             return tb.buildFeatureType();
         } finally {
-            OGRUtils.releaseDefinition(definition);
+            ogr.LayerReleaseLayerDefn(layer);
         }
     }
 
@@ -122,11 +115,11 @@ class FeatureTypeMapper {
      * @param field
      * @return
      */
-    private Class getBinding(Pointer field) {
-        ValuedEnum<OGRFieldType> type = OGR_Fld_GetType(field);
-        int width = OGR_Fld_GetWidth(field);
-        long value = type.value();
-        if (value == OGRFieldType.OFTInteger.value()) {
+    private Class getBinding(Object field) {
+        long type = ogr.FieldGetType(field);
+        int width = ogr.FieldGetWidth(field);
+        
+        if (ogr.FieldIsIntegerType(type)) {
             if (width <= 3) {
                 return Byte.class;
             } else if (width <= 5) {
@@ -138,9 +131,9 @@ class FeatureTypeMapper {
             } else {
                 return BigDecimal.class;
             }
-        } else if (value == OGRFieldType.OFTIntegerList.value()) {
+        } else if (ogr.FieldIsIntegerListType(type)) {
             return int[].class;
-        } else if (value == OGRFieldType.OFTReal.value()) {
+        } else if (ogr.FieldIsRealType(type)) {
             if (width <= 12) {
                 return Float.class;
             } else if (width <= 22) {
@@ -148,15 +141,15 @@ class FeatureTypeMapper {
             } else {
                 return BigDecimal.class;
             }
-        } else if (value == OGRFieldType.OFTRealList.value()) {
+        } else if (ogr.FieldIsRealListType(type)) {
             return double[].class;
-        } else if (value == OGRFieldType.OFTBinary.value()) {
+        } else if (ogr.FieldIsBinaryType(type)) {
             return byte[].class;
-        } else if (value == OGRFieldType.OFTDate.value()) {
+        } else if (ogr.FieldIsDateType(type)) {
             return java.sql.Date.class;
-        } else if (value == OGRFieldType.OFTTime.value()) {
+        } else if (ogr.FieldIsTimeType(type)) {
             return java.sql.Time.class;
-        } else if (value == OGRFieldType.OFTDateTime.value()) {
+        } else if (ogr.FieldIsDateTimeType(type)) {
             return java.sql.Timestamp.class;
         } else {
             // whatever else we'll map a string
@@ -176,63 +169,64 @@ class FeatureTypeMapper {
      * @param ad
      * @throws IOException
      */
-    public Pointer getOGRFieldDefinition(AttributeDescriptor ad) throws IOException {
+    public Object getOGRFieldDefinition(AttributeDescriptor ad) throws IOException {
         final Class type = ad.getType().getBinding();
-        final Pointer def;
-        Pointer<Byte> namePtr = pointerToCString(ad.getLocalName());
+        final Object def;
+        final String name = ad.getLocalName();
         if (Boolean.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTString);
-            OGR_Fld_SetWidth(def, 5);
+            def = ogr.CreateStringField(name);
+            ogr.FieldSetWidth(def, 5);
         } else if (Byte.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 3);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateIntegerField(name);
+            ogr.FieldSetWidth(def, 3);
+            ogr.FieldSetJustifyRight(def);
         } else if (Short.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 5);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateIntegerField(name);
+            ogr.FieldSetWidth(def, 5);
+            ogr.FieldSetJustifyRight(def);
         } else if (Integer.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 9);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateIntegerField(name);
+            ogr.FieldSetWidth(def, 9);
+            ogr.FieldSetJustifyRight(def);
         } else if (Long.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 19);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateIntegerField(name);
+            ogr.FieldSetWidth(def, 19);
+            ogr.FieldSetJustifyRight(def);
         } else if (BigInteger.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 32);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateIntegerField(name);
+            ogr.FieldSetWidth(def, 32);
+            ogr.FieldSetJustifyRight(def);
         } else if (BigDecimal.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTReal);
-            OGR_Fld_SetWidth(def, 32);
-            OGR_Fld_SetPrecision(def, 15);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateRealField(name);
+            ogr.FieldSetWidth(def, 32);
+            ogr.FieldSetPrecision(def, 15);
+            ogr.FieldSetJustifyRight(def);
         } else if (Float.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTReal);
-            OGR_Fld_SetWidth(def, 12);
-            OGR_Fld_SetPrecision(def, 7);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateRealField(name);
+            ogr.FieldSetWidth(def, 12);
+            ogr.FieldSetPrecision(def, 7);
+            ogr.FieldSetJustifyRight(def);
         } else if (Double.class.equals(type) || Number.class.isAssignableFrom(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTInteger);
-            OGR_Fld_SetWidth(def, 22);
-            OGR_Fld_SetPrecision(def, 16);
-            OGR_Fld_SetJustify(def, OGRJustification.OJRight);
+            def = ogr.CreateRealField(name);
+            ogr.FieldSetWidth(def, 22);
+            ogr.FieldSetPrecision(def, 16);
+            ogr.FieldSetJustifyRight(def);
         } else if (String.class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTString);
+            def = ogr.CreateStringField(name);
             int length = FeatureTypes.getFieldLength(ad);
             if (length <= 0) {
                 length = 255;
             }
-            OGR_Fld_SetWidth(def, length);
+            ogr.FieldSetWidth(def, length);
+            
         } else if (byte[].class.equals(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTBinary);
+            def = ogr.CreateBinaryField(name);
         } else if (java.sql.Date.class.isAssignableFrom(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTDate);
+            def = ogr.CreateDateField(name);
         } else if (java.sql.Time.class.isAssignableFrom(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTTime);
+            def = ogr.CreateTimeField(name);
         } else if (java.util.Date.class.isAssignableFrom(type)) {
-            def = OGR_Fld_Create(namePtr, OGRFieldType.OFTDateTime);
+            def = ogr.CreateDateTimeField(name);
         } else {
             throw new IOException("Cannot map " + type + " to an OGR type");
         }
@@ -247,30 +241,30 @@ class FeatureTypeMapper {
      * @return
      * @throws IOException
      */
-    public ValuedEnum<OGRwkbGeometryType> getOGRGeometryType(GeometryDescriptor descriptor)
+    public long getOGRGeometryType(GeometryDescriptor descriptor)
             throws IOException {
         Class binding = descriptor.getType().getBinding();
         if (GeometryCollection.class.isAssignableFrom(binding)) {
             if (MultiPoint.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbMultiPoint;
+                return ogr.GetMultiPointType();
             } else if (MultiLineString.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbMultiLineString;
+                return ogr.GetMultiLineStringType();
             } else if (MultiPolygon.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbMultiPolygon;
+                return ogr.GetMultiPolygonType();
             } else {
-                return OGRwkbGeometryType.wkbGeometryCollection;
+                return ogr.GetGeometryCollectionType();
             }
         } else {
             if (Point.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbPoint;
+                return ogr.GetPointType();
             } else if (LinearRing.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbLinearRing;
+                return ogr.GetLinearRingType();
             } else if (LineString.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbLineString;
+                return ogr.GetLineStringType();
             } else if (Polygon.class.isAssignableFrom(binding)) {
-                return OGRwkbGeometryType.wkbPolygon;
+                return ogr.GetPolygonType();
             } else {
-                return OGRwkbGeometryType.wkbUnknown;
+                return ogr.GetGeometryUnknownType();
             }
         }
     }
@@ -282,34 +276,34 @@ class FeatureTypeMapper {
      * @return
      * @throws IOException
      */
-    private Class<? extends Geometry> getGeometryBinding(Pointer definition) throws IOException {
-        ValuedEnum<OGRwkbGeometryType> gt = OGR_FD_GetGeomType(definition);
-        long value = gt.value();
+    private Class<? extends Geometry> getGeometryBinding(Object definition) throws IOException {
+        long value = ogr.LayerGetGeometryType(definition);
+        
         // for line and polygon we return multi in any case since OGR will declare simple for
         // multigeom
         // anyways and then return simple or multi in the actual geoemtries depending on
         // what it finds
-        if (value == OGRwkbGeometryType.wkbPoint.value()
-                || value == OGRwkbGeometryType.wkbPoint25D.value()) {
+        if (value == ogr.GetPointType()
+                || value == ogr.GetPoint25DType()) {
             return Point.class;
-        } else if (value == OGRwkbGeometryType.wkbLinearRing.value()) {
+        } else if (value == ogr.GetLinearRingType()) {
             return LinearRing.class;
-        } else if (value == OGRwkbGeometryType.wkbLineString.value()
-                || value == OGRwkbGeometryType.wkbLineString25D.value()
-                || value == OGRwkbGeometryType.wkbMultiLineString.value()
-                || value == OGRwkbGeometryType.wkbMultiLineString25D.value()) {
+        } else if (value == ogr.GetLineStringType()
+                || value == ogr.GetLineString25DType()
+                || value == ogr.GetMultiLineStringType()
+                || value == ogr.GetMultiLineString25DType()) {
             return MultiLineString.class;
-        } else if (value == OGRwkbGeometryType.wkbPolygon.value()
-                || value == OGRwkbGeometryType.wkbPolygon25D.value()
-                || value == OGRwkbGeometryType.wkbMultiPolygon.value()
-                || value == OGRwkbGeometryType.wkbMultiPolygon25D.value()) {
+        } else if (value == ogr.GetPolygonType()
+                || value == ogr.GetPolygon25DType()
+                || value == ogr.GetMultiPolygonType()
+                || value == ogr.GetMultiPolygon25DType()) {
             return MultiPolygon.class;
-        } else if (value == OGRwkbGeometryType.wkbGeometryCollection.value()
-                || value == OGRwkbGeometryType.wkbGeometryCollection25D.value()) {
+        } else if (value == ogr.GetGeometryCollectionType()
+                || value == ogr.GetGeometryCollection25DType()) {
             return GeometryCollection.class;
-        } else if (value == OGRwkbGeometryType.wkbNone.value()) {
+        } else if (value == ogr.GetGeometryNoneType()) {
             return null;
-        } else if (value == OGRwkbGeometryType.wkbUnknown.value()) {
+        } else if (value == ogr.GetGeometryUnknownType()) {
             return Geometry.class;
         } else {
             throw new IOException("Unknown geometry type: " + value);
@@ -323,17 +317,17 @@ class FeatureTypeMapper {
      * @return
      * @throws IOException
      */
-    private CoordinateReferenceSystem getCRS(Pointer layer) throws IOException {
-        Pointer spatialReference = null;
+    private CoordinateReferenceSystem getCRS(Object layer) throws IOException {
+        Object spatialReference = null;
         CoordinateReferenceSystem crs = null;
         try {
-            spatialReference = OGR_L_GetSpatialRef(layer);
+            spatialReference = ogr.LayerGetSpatialRef(layer);
             if (spatialReference == null) {
                 return null;
             }
 
             try {
-                Pointer<Byte> code = OSRGetAuthorityCode(spatialReference, pointerToCString("EPSG"));
+                String code = ogr.SpatialRefGetAuthorityCode(spatialReference, "EPSG");
                 if (code != null) {
                     String fullCode = "EPSG:" + code;
                     crs = CRS.decode(fullCode);
@@ -343,9 +337,7 @@ class FeatureTypeMapper {
             }
             if (crs == null) {
                 try {
-                    Pointer<Pointer<Byte>> wktPtr = allocatePointer(Byte.class);
-                    OSRExportToWkt(spatialReference, wktPtr);
-                    String wkt = wktPtr.getPointer(Byte.class).getCString();
+                    String wkt = ogr.SpatialRefExportToWkt(spatialReference);
                     crs = CRS.parseWKT(wkt);
                 } catch (Exception e) {
                     // the wkt might reference an unsupported projection
@@ -353,7 +345,7 @@ class FeatureTypeMapper {
             }
             return crs;
         } finally {
-            OGRUtils.releaseSpatialReference(spatialReference);
+            ogr.SpatialRefRelease(spatialReference);
         }
     }
 
@@ -363,14 +355,14 @@ class FeatureTypeMapper {
      * @param crs
      * @return
      */
-    public Pointer getSpatialReference(CoordinateReferenceSystem crs) {
+    public Object getSpatialReference(CoordinateReferenceSystem crs) {
         if (crs == null) {
             return null;
         }
 
         // use tostring to get a lenient wkt translation
         String wkt = crs.toString();
-        return OSRNewSpatialReference(pointerToCString(wkt));
+        return ogr.NewSpatialRef(wkt);
     }
 
 }

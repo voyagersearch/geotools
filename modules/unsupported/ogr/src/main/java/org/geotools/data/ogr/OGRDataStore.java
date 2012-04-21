@@ -16,11 +16,6 @@
  */
 package org.geotools.data.ogr;
 
-import static org.bridj.Pointer.*;
-import static org.geotools.data.ogr.OGRUtils.*;
-import static org.geotools.data.ogr.bridj.CplErrorLibrary.*;
-import static org.geotools.data.ogr.bridj.OgrLibrary.*;
-
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -29,11 +24,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.bridj.Pointer;
-import org.bridj.ValuedEnum;
 import org.geotools.data.DataSourceException;
 import org.geotools.data.Query;
-import org.geotools.data.ogr.bridj.OgrLibrary.OGRwkbGeometryType;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.store.ContentDataStore;
@@ -58,69 +50,63 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 @SuppressWarnings("rawtypes")
 public class OGRDataStore extends ContentDataStore {
 
-    static {
-        GdalInit.init();
-
-        // perform OGR format registration once
-        if (OGRGetDriverCount() == 0) {
-            OGRRegisterAll();
-        }
-    }
+    OGR ogr;
 
     String ogrSourceName;
 
     String ogrDriver;
 
-    public OGRDataStore(String ogrName, String ogrDriver, URI namespace) {
+    public OGRDataStore(String ogrName, String ogrDriver, URI namespace, OGR ogr) {
         if (namespace != null) {
             setNamespaceURI(namespace.toString());
         }
         this.ogrSourceName = ogrName;
         this.ogrDriver = ogrDriver;
+        this.ogr = ogr;
     }
 
     @Override
     protected List<Name> createTypeNames() throws IOException {
-        Pointer dataSource = null;
-        Pointer layer = null;
+        Object dataSource = null;
+        Object layer = null;
         try {
             dataSource = openOGRDataSource(false);
 
             List<Name> result = new ArrayList<Name>();
-            int count = OGR_DS_GetLayerCount(dataSource);
+            int count = ogr.DataSourceGetLayerCount(dataSource);
             for (int i = 0; i < count; i++) {
-                layer = OGR_DS_GetLayer(dataSource, i);
-                String name = getLayerName(layer);
+                layer = ogr.DataSourceGetLayer(dataSource, i);
+                String name = ogr.LayerGetName(layer);
                 if (name != null) {
                     result.add(new NameImpl(getNamespaceURI(), name));
                 }
-                OGRUtils.releaseLayer(layer);
+                ogr.LayerRelease(layer);
             }
             return result;
         } catch (IOException e) {
             return Collections.emptyList();
         } finally {
-            OGRUtils.releaseDataSource(dataSource);
-            OGRUtils.releaseLayer(layer);
+            ogr.DataSourceRelease(dataSource);
+            ogr.LayerRelease(layer);
         }
     }
 
-    Pointer openOGRDataSource(boolean update) throws IOException {
-        Pointer ds = null;
-        Pointer<Byte> sourcePtr = pointerToCString(ogrSourceName);
+    Object openOGRDataSource(boolean update) throws IOException {
+        Object ds = null;
+
         int mode = update ? 1 : 0;
         if (ogrDriver != null) {
-            Pointer driver = OGRGetDriverByName(pointerToCString(ogrDriver));
+            Object driver = ogr.GetDriverByName(ogrDriver);
             if (driver == null) {
                 throw new IOException("Could not find a driver named " + driver);
             }
-            ds = OGR_Dr_Open(driver, sourcePtr, mode);
+            ds = ogr.DriverOpen(driver, ogrSourceName, mode);
             if (ds == null) {
                 throw new IOException("OGR could not open '" + ogrSourceName + "' in "
                         + (update ? "read-write" : "read-only") + " mode with driver " + ogrDriver);
             }
         } else {
-            ds = OGROpenShared(sourcePtr, mode, null);
+            ds = ogr.OpenShared(ogrSourceName, mode);
             if (ds == null) {
                 throw new IOException("OGR could not open '" + ogrSourceName + "' in "
                         + (update ? "read-write" : "read-only") + " mode");
@@ -130,8 +116,8 @@ public class OGRDataStore extends ContentDataStore {
         return ds;
     }
 
-    Pointer openOGRLayer(Pointer dataSource, String layerName) throws IOException {
-        Pointer layer = OGR_DS_GetLayerByName(dataSource, pointerToCString(layerName));
+    Object openOGRLayer(Object dataSource, String layerName) throws IOException {
+        Object layer = ogr.DataSourceGetLayerByName(dataSource, layerName);
         if (layer == null) {
             throw new IOException("OGR could not find layer '" + layerName + "'");
         }
@@ -141,31 +127,30 @@ public class OGRDataStore extends ContentDataStore {
     @Override
     protected ContentFeatureSource createFeatureSource(ContentEntry entry) throws IOException {
         if (supportsInPlaceWrite(entry.getTypeName())) {
-            return new OGRFeatureStore(entry, Query.ALL);
+            return new OGRFeatureStore(entry, Query.ALL, ogr);
         } else {
-            return new OGRFeatureSource(entry, Query.ALL);
+            return new OGRFeatureSource(entry, Query.ALL, ogr);
         }
     }
 
     public boolean supportsInPlaceWrite(String typeName) throws IOException {
-        Pointer ds = null;
-        Pointer l = null;
+        Object ds = null;
+        Object l = null;
         try {
             // try opening in update mode
-            ds = OGROpen(pointerToCString(ogrSourceName), 1, null);
+            ds = ogr.Open(ogrSourceName, 1);
             if (ds == null) {
                 return false;
             }
             l = openOGRLayer(ds, typeName);
             // for the moment we support working only with random writers
-            boolean canDelete = OGR_L_TestCapability(l, pointerToCString(OLCDeleteFeature)) != 0;
-            boolean canWriteRandom = OGR_L_TestCapability(l, pointerToCString(OLCRandomWrite)) != 0;
-            boolean canWriteSequential = OGR_L_TestCapability(l,
-                    pointerToCString(OLCSequentialWrite)) != 0;
+            boolean canDelete = ogr.LayerCanDeleteFeature(l);
+            boolean canWriteRandom = ogr.LayerCanWriteRandom(l);
+            boolean canWriteSequential = ogr.LayerCanWriteSequential(l);
             return canDelete && canWriteRandom && canWriteSequential;
         } finally {
-            OGRUtils.releaseLayer(l);
-            OGRUtils.releaseDataSource(ds);
+            ogr.LayerRelease(l);
+            ogr.DataSourceRelease(l);
         }
     }
 
@@ -185,23 +170,19 @@ public class OGRDataStore extends ContentDataStore {
      */
     public void createSchema(SimpleFeatureType schema, boolean approximateFields, String[] options)
             throws IOException {
-        Pointer dataSource = null;
-        Pointer layer = null;
+        Object dataSource = null;
+        Object layer = null;
 
         try {
             // either open datasource, or try creating one
-            Pointer<Pointer<Byte>> optionsPointer = null;
-            if (options != null && options.length > 0) {
-                optionsPointer = pointerToCStrings(options);
-            }
-            dataSource = openOrCreateDataSource(options, dataSource, optionsPointer);
+            dataSource = openOrCreateDataSource(options, dataSource);
 
             FeatureTypeMapper mapper = new FeatureTypeMapper();
 
-            layer = createNewLayer(schema, dataSource, optionsPointer, mapper);
+            layer = createNewLayer(schema, dataSource, options, mapper);
 
             // check the ability to create fields
-            if (OGR_L_TestCapability(layer, pointerToCString(OLCCreateField)) == 0) {
+            if (!ogr.LayerCanCreateField(layer)) {
                 throw new DataSourceException(
                         "OGR reports it's not possible to create fields on this layer");
             }
@@ -212,14 +193,14 @@ public class OGRDataStore extends ContentDataStore {
                 if (ad == schema.getGeometryDescriptor())
                     continue;
 
-                Pointer fieldDefinition = mapper.getOGRFieldDefinition(ad);
-                OGR_L_CreateField(layer, fieldDefinition, approximateFields ? 1 : 0);
+                Object fieldDefinition = mapper.getOGRFieldDefinition(ad);
+                ogr.LayerCreateField(layer, fieldDefinition, approximateFields ? 1 : 0);
             }
 
-            OGR_L_SyncToDisk(layer);
+            ogr.LayerSyncToDisk(layer);
         } finally {
-            OGRUtils.releaseLayer(layer);
-            OGRUtils.releaseDataSource(dataSource);
+            ogr.LayerRelease(layer);
+            ogr.DataSourceRelease(dataSource);
         }
     }
 
@@ -239,24 +220,21 @@ public class OGRDataStore extends ContentDataStore {
      */
     public void createSchema(SimpleFeatureCollection data, boolean approximateFields,
             String[] options) throws IOException {
-        Pointer dataSource = null;
-        Pointer layer = null;
+        Object dataSource = null;
+        Object layer = null;
         SimpleFeatureType schema = data.getSchema();
         SimpleFeatureIterator features;
         try {
             // either open datasource, or try creating one
-            Pointer<Pointer<Byte>> optionsPointer = null;
-            if (options != null && options.length > 0) {
-                optionsPointer = pointerToCStrings(options);
-            }
-            dataSource = openOrCreateDataSource(options, dataSource, optionsPointer);
+            dataSource = openOrCreateDataSource(options, dataSource);
 
             FeatureTypeMapper mapper = new FeatureTypeMapper();
 
-            layer = createNewLayer(schema, dataSource, optionsPointer, mapper);
+            //layer = createNewLayer(schema, dataSource, optionsPointer, mapper);
+            layer = createNewLayer(schema, dataSource, options, mapper);
 
             // check the ability to create fields
-            if (OGR_L_TestCapability(layer, pointerToCString(OLCCreateField)) == 0) {
+            if (!ogr.LayerCanCreateField(layer)) {
                 throw new DataSourceException(
                         "OGR reports it's not possible to create fields on this layer");
             }
@@ -269,24 +247,24 @@ public class OGRDataStore extends ContentDataStore {
                     continue;
                 }
 
-                Pointer fieldDefinition = mapper.getOGRFieldDefinition(ad);
-                OGR_L_CreateField(layer, fieldDefinition, approximateFields ? 1 : 0);
+                Object fieldDefinition = mapper.getOGRFieldDefinition(ad);
+                ogr.LayerCreateField(layer, fieldDefinition, approximateFields ? 1 : 0);
                 // the data source might have changed the name of the field, map them
-                String newName = getCString(OGR_Fld_GetNameRef(fieldDefinition));
+                String newName = ogr.FieldGetName(fieldDefinition);
                 nameMap.put(newName, ad.getLocalName());
                 j++;
             }
 
             // get back the feature definition
-            Pointer layerDefinition = OGR_L_GetLayerDefn(layer);
+            Object layerDefinition = ogr.LayerGetLayerDefn(layer);
 
             // remap positions, as the store might add extra attributes (and the field api is
             // positional)
             Map<Integer, Integer> indexMap = new HashMap<Integer, Integer>();
-            int count = OGR_FD_GetFieldCount(layerDefinition);
+            int count = ogr.LayerGetFieldCount(layerDefinition);
             for (int i = 0; i < count; i++) {
-                Pointer fd = OGR_FD_GetFieldDefn(layerDefinition, i);
-                String newName = getCString(OGR_Fld_GetNameRef(fd));
+                Object fd = ogr.LayerGetFieldDefn(layerDefinition, i);
+                String newName = ogr.FieldGetName(fd);
                 if (newName != null) {
                     String oldName = nameMap.get(newName);
                     for (int j = 0; j < schema.getAttributeCount(); j++) {
@@ -299,70 +277,66 @@ public class OGRDataStore extends ContentDataStore {
 
             // iterate and write out without going throught the ContentDataStore api, which
             // assumes it's possible to let go of it later
-            GeometryMapper geomMapper = new GeometryMapper.WKB(new GeometryFactory());
+            GeometryMapper geomMapper = new GeometryMapper.WKB(new GeometryFactory(), ogr);
             features = data.features();
             while (features.hasNext()) {
                 SimpleFeature feature = features.next();
 
                 // create the equivalent ogr feature
-                Pointer ogrFeature = OGR_F_Create(layerDefinition);
+                Object ogrFeature = ogr.LayerNewFeature(layerDefinition);
                 for (int i = 0; i < schema.getAttributeCount(); i++) {
                     Object value = feature.getAttribute(i);
                     if (value instanceof Geometry) {
                         // using setGeoemtryDirectly the feature becomes the owner of the generated
                         // OGR geometry and we don't have to .delete() it (it's faster, too)
-                        Pointer geometry = geomMapper.parseGTGeometry((Geometry) value);
-                        OGR_F_SetGeometryDirectly(ogrFeature, geometry);
+                        Object geometry = geomMapper.parseGTGeometry((Geometry) value);
+                        ogr.FeatureSetGeometryDirectly(ogrFeature, geometry);
                     } else {
                         // remap index
                         int ogrIndex = indexMap.get(i);
-                        FeatureMapper.setFieldValue(layerDefinition, ogrFeature, ogrIndex, value);
+                        FeatureMapper.setFieldValue(layerDefinition, ogrFeature, ogrIndex, value, ogr);
                     }
                 }
 
                 // write it out
-                checkError(OGR_L_CreateFeature(layer, ogrFeature));
-                OGR_F_Destroy(ogrFeature);
+                ogr.CheckError(ogr.LayerCreateFeature(layer, ogrFeature));
+
+                ogr.FeatureDestroy(ogrFeature);
             }
 
-            OGR_L_SyncToDisk(layer);
+            ogr.LayerSyncToDisk(layer);
         } finally {
-            OGRUtils.releaseLayer(layer);
-            OGRUtils.releaseDataSource(dataSource);
+            ogr.LayerRelease(layer);
+            ogr.DataSourceRelease(dataSource);
         }
     }
 
-    private Pointer createNewLayer(SimpleFeatureType schema, Pointer dataSource,
-            Pointer<Pointer<Byte>> optionsPointer, FeatureTypeMapper mapper) throws IOException,
-            DataSourceException {
-        Pointer layer;
+    private Object createNewLayer(SimpleFeatureType schema, Object dataSource, String[] options, 
+        FeatureTypeMapper mapper) throws IOException, DataSourceException {
+        Object layer;
         // get the spatial reference corresponding to the default geometry
         GeometryDescriptor geomType = schema.getGeometryDescriptor();
-        ValuedEnum<OGRwkbGeometryType> ogrGeomType = mapper.getOGRGeometryType(geomType);
-        Pointer spatialReference = mapper.getSpatialReference(geomType
+        long ogrGeomType = mapper.getOGRGeometryType(geomType);
+        Object spatialReference = mapper.getSpatialReference(geomType
                 .getCoordinateReferenceSystem());
 
         // create the layer
-        layer = OGR_DS_CreateLayer(dataSource, pointerToCString(schema.getTypeName()),
-                spatialReference, ogrGeomType, optionsPointer);
+        layer = ogr.DataSourceCreateLayer(dataSource, schema.getTypeName(), spatialReference, ogrGeomType, options);
         if (layer == null) {
-            throw new DataSourceException("Could not create the OGR layer: "
-                    + OGRUtils.getCString(CPLGetLastErrorMsg()));
+            throw new DataSourceException("Could not create the OGR layer: "+ogr.GetLastErrorMsg());
         }
         return layer;
     }
 
-    private Pointer openOrCreateDataSource(String[] options, Pointer dataSource,
-            Pointer<Pointer<Byte>> optionsPointer) throws IOException, DataSourceException {
+    private Object openOrCreateDataSource(String[] options, Object dataSource) 
+            throws IOException, DataSourceException {
         try {
             dataSource = openOGRDataSource(true);
         } catch (IOException e) {
             if (ogrDriver != null) {
-                Pointer driver = OGRGetDriverByName(pointerToCString(ogrDriver));
-                dataSource = OGR_Dr_CreateDataSource(driver, pointerToCString(ogrSourceName),
-                        optionsPointer);
-                driver.release();
-
+                Object driver = ogr.GetDriverByName(ogrDriver);
+                dataSource = ogr.DriverCreateDataSource(driver, ogrSourceName, options);
+                ogr.DriverRelease(driver);
                 if (dataSource == null)
                     throw new IOException("Could not create OGR data source with driver "
                             + ogrDriver + " and options " + options);

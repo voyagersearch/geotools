@@ -32,8 +32,13 @@ import org.geotools.referencing.CRS;
  *
  * @source $URL$
  */
-public class OGRPeformanceTest extends TestCaseSupport {
+public abstract class OGRPeformanceTest extends TestCaseSupport {
+
     final static String STATE_POP = "shapes/statepop.shp";
+
+    protected OGRPeformanceTest(OGRDataStoreFactory dataStoreFactory) {
+        super(dataStoreFactory);
+    }
 
     protected void setUp() throws Exception {
         super.setUp();
@@ -41,7 +46,7 @@ public class OGRPeformanceTest extends TestCaseSupport {
     }
 
     public void testOGRShapePerformance() throws Exception {
-        OGRDataStore ods = new OGRDataStore(getAbsolutePath(STATE_POP), null, null);
+        OGRDataStore ods = new OGRDataStore(getAbsolutePath(STATE_POP), null, null, ogr);
         long start = System.currentTimeMillis();
         ods.getSchema(ods.getTypeNames()[0]);
         long end = System.currentTimeMillis();

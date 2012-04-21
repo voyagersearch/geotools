@@ -32,7 +32,11 @@ import org.opengis.feature.simple.SimpleFeatureType;
  *
  * @source $URL$
  */
-public class OGRDataStoreFactoryTest extends TestCaseSupport {
+public abstract class OGRDataStoreFactoryTest extends TestCaseSupport {
+
+    protected OGRDataStoreFactoryTest(OGRDataStoreFactory dataStoreFactory) {
+        super(dataStoreFactory);
+    }
 
     public void testLookup() throws Exception {
         Map<String, Serializable> map = new HashMap<String, Serializable>();
@@ -54,14 +58,13 @@ public class OGRDataStoreFactoryTest extends TestCaseSupport {
     }
 
     public void testNamespace() throws Exception {
-        OGRDataStoreFactory factory = new OGRDataStoreFactory();
         Map<String, Serializable> map = new HashMap<String, Serializable>();
         URI namespace = new URI("http://jesse.com");
         map.put(OGRDataStoreFactory.NAMESPACEP.key, namespace);
         map.put(OGRDataStoreFactory.OGR_NAME.key, getAbsolutePath(STATE_POP));
         DataStore store = null;
         try {
-            store = factory.createDataStore(map);
+            store = dataStoreFactory.createDataStore(map);
             SimpleFeatureType schema = store.getSchema(
                     STATE_POP.substring(STATE_POP.lastIndexOf('/') + 1,
                             STATE_POP.lastIndexOf('.')));
@@ -72,7 +75,7 @@ public class OGRDataStoreFactoryTest extends TestCaseSupport {
     }
     
     public void testNames() throws Exception {
-        Set<String> drivers = OGRDataStoreFactory.getAvailableDrivers();
+        Set<String> drivers = dataStoreFactory.getAvailableDrivers();
         assertTrue(drivers.size() > 0);
         assertTrue(drivers.contains("ESRI Shapefile"));
     }
