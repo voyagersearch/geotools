@@ -233,7 +233,7 @@ public abstract class TestCaseSupport extends TestCase {
      */
     protected void copy(final String name, String[] requiredExtensions, String[] optionalExtensions) throws IOException {
         for (int i = 0; i < requiredExtensions.length; i++) {
-            assertTrue(TestData.copy(this, sibling(name, requiredExtensions[i])).canRead());
+            assertTrue(TestData.copy(TestCaseSupport.class, sibling(name, requiredExtensions[i])).canRead());
         }
         for (int i = 0; i < optionalExtensions.length; i++) {
             try {
@@ -256,7 +256,7 @@ public abstract class TestCaseSupport extends TestCase {
             copy(testData, new String[] { "shp", "dbf", "shx" }, new String[] { "prj" });
         else if (testData.endsWith(".MIF"))
             copy(testData, new String[] { "MIF", "MID" }, new String[0]);
-        File f = new File(TestData.url(this, testData).getFile());
+        File f = new File(TestData.url(TestCaseSupport.class, testData).getFile());
         return f.getAbsolutePath();
     }
 
