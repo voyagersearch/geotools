@@ -28,6 +28,7 @@ import static org.geotools.data.ogr.bridj.OgrLibrary.*;
 import static org.geotools.data.ogr.bridj.OsrLibrary.*;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.bridj.Pointer;
 import org.geotools.data.ogr.OGR;
@@ -607,7 +608,10 @@ public class BridjOGR implements OGR {
     
     @Override
     public int GeometryExportToWkb(Object geom, byte[] wkb) {
-        return OGR_G_ExportToWkb((Pointer<?>)geom, OGRwkbByteOrder.wkbXDR, pointerToBytes(wkb));
+        Pointer<Byte> p = pointerToBytes(wkb);
+        int ret = OGR_G_ExportToWkb((Pointer<?>)geom, OGRwkbByteOrder.wkbXDR, p);
+        System.arraycopy(p.getBytes(), 0, wkb, 0, wkb.length);
+        return ret;
     }
     
     @Override
