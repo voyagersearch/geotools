@@ -177,7 +177,7 @@ public class OGRDataStore extends ContentDataStore {
             // either open datasource, or try creating one
             dataSource = openOrCreateDataSource(options, dataSource);
 
-            FeatureTypeMapper mapper = new FeatureTypeMapper();
+            FeatureTypeMapper mapper = new FeatureTypeMapper(ogr);
 
             layer = createNewLayer(schema, dataSource, options, mapper);
 
@@ -228,7 +228,7 @@ public class OGRDataStore extends ContentDataStore {
             // either open datasource, or try creating one
             dataSource = openOrCreateDataSource(options, dataSource);
 
-            FeatureTypeMapper mapper = new FeatureTypeMapper();
+            FeatureTypeMapper mapper = new FeatureTypeMapper(ogr);
 
             //layer = createNewLayer(schema, dataSource, optionsPointer, mapper);
             layer = createNewLayer(schema, dataSource, options, mapper);

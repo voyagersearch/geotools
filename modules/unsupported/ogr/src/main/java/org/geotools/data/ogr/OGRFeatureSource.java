@@ -382,7 +382,7 @@ class OGRFeatureSource extends ContentFeatureSource {
             layer = getDataStore().openOGRLayer(dataSource, typeName);
 
             // map to geotools feature type
-            return new FeatureTypeMapper().getFeatureType(layer, typeName, namespaceURI);
+            return new FeatureTypeMapper(ogr).getFeatureType(layer, typeName, namespaceURI);
         } finally {
             ogr.LayerRelease(layer);
             ogr.DataSourceRelease(dataSource);

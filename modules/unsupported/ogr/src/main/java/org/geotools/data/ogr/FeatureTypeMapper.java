@@ -48,6 +48,10 @@ class FeatureTypeMapper {
 
     OGR ogr;
 
+    public FeatureTypeMapper(OGR ogr) {
+        this.ogr = ogr;
+    }
+
     /**
      * Returns the geotools feature type equivalent from the native OGR one
      * 
