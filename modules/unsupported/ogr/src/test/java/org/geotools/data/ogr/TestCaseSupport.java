@@ -237,7 +237,7 @@ public abstract class TestCaseSupport extends TestCase {
         }
         for (int i = 0; i < optionalExtensions.length; i++) {
             try {
-                assertTrue(TestData.copy(this, sibling(name, optionalExtensions[i])).canRead());
+                assertTrue(TestData.copy(TestCaseSupport.class, sibling(name, optionalExtensions[i])).canRead());
             } catch (FileNotFoundException e) {
                 // Ignore: this file is optional.
             }
