@@ -16,8 +16,6 @@
  */
 package org.geotools.data.ogr;
 
-import static org.geotools.data.ogr.bridj.OgrLibrary.OGRGetDriverCount;
-
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -30,7 +28,6 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.bridj.Pointer;
 import org.geotools.data.DataSourceException;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFactorySpi;
