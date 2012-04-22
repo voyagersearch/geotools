@@ -339,7 +339,7 @@ public class BridjOGR implements OGR {
     
     @Override
     public void FieldSetWidth(Object field, int width) {
-        OGR_Fld_SetWidth((Pointer<?>)field, 5);
+        OGR_Fld_SetWidth((Pointer<?>)field, width);
     }
     
     @Override
@@ -523,12 +523,12 @@ public class BridjOGR implements OGR {
 
     @Override
     public long GetPointType() {
-        return OGRwkbGeometryType.wkbMultiPoint.value();
+        return OGRwkbGeometryType.wkbPoint.value();
     }
     
     @Override
     public long GetPoint25DType() {
-        return OGRwkbGeometryType.wkbMultiPoint25D.value();
+        return OGRwkbGeometryType.wkbPoint25D.value();
     }
     
     @Override
