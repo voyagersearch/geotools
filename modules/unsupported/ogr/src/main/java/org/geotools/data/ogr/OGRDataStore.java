@@ -143,14 +143,15 @@ public class OGRDataStore extends ContentDataStore {
                 return false;
             }
             l = openOGRLayer(ds, typeName);
+            
             // for the moment we support working only with random writers
             boolean canDelete = ogr.LayerCanDeleteFeature(l);
             boolean canWriteRandom = ogr.LayerCanWriteRandom(l);
             boolean canWriteSequential = ogr.LayerCanWriteSequential(l);
             return canDelete && canWriteRandom && canWriteSequential;
         } finally {
-            ogr.LayerRelease(l);
-            ogr.DataSourceRelease(l);
+            if (l != null) ogr.LayerRelease(l);
+            if (ds != null) ogr.DataSourceRelease(ds);
         }
     }
 

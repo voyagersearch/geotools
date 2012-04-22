@@ -28,7 +28,6 @@ import static org.geotools.data.ogr.bridj.OgrLibrary.*;
 import static org.geotools.data.ogr.bridj.OsrLibrary.*;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 import org.bridj.Pointer;
 import org.geotools.data.ogr.OGR;

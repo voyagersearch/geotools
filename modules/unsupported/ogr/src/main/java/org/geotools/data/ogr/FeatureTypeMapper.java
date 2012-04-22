@@ -109,7 +109,7 @@ class FeatureTypeMapper {
 
             return tb.buildFeatureType();
         } finally {
-            ogr.LayerReleaseLayerDefn(layer);
+            ogr.LayerReleaseLayerDefn(definition);
         }
     }
 
@@ -349,7 +349,7 @@ class FeatureTypeMapper {
             }
             return crs;
         } finally {
-            ogr.SpatialRefRelease(spatialReference);
+            if (spatialReference != null) ogr.SpatialRefRelease(spatialReference);
         }
     }
 

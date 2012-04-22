@@ -216,7 +216,7 @@ public interface OGR {
 
     double FeatureGetFieldAsDouble(Object feature, int i);
 
-    void FeatureGetFieldAsDateTime(Object feature, int i, int[] year, int[] month, int[] data, 
+    void FeatureGetFieldAsDateTime(Object feature, int i, int[] year, int[] month, int[] day, 
         int[] hour, int[] minute, int[] second, int[] tzFlag);
 
     void FeatureDestroy(Object feature);
