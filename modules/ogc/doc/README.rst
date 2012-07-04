@@ -13,8 +13,10 @@ Generally you should be able to use any Eclipse version greater than 3.5 with
 any EMF version greater than 3.5. At the time of this writing the following
 configuration was verified.
 
- * Eclipse 3.7.2 (Indigo) for Java Developers
- * EMF 3.7.2 all-in-one bundle (manually unziped into Eclipse directory)
+* Eclipse 3.7.2 (Indigo) for Java Developers
+* EMF 3.7.2 all-in-one bundle (manually unziped into Eclipse directory)
+
+EMF downloads are available from http://www.eclipse.org/modeling/emf/download/.
 
 Instrumenting an EMF Model
 --------------------------
@@ -32,7 +34,9 @@ Annotate the Java Interface
 The first step of adding a new property is to add a method signature to the 
 appropriate Java interface. 
 
-.. image:: annotate.jpg
+.. figure:: annotate.jpg
+   
+   Adding the new property with a java method
 
 Two important things to note:
 
@@ -48,11 +52,17 @@ is to reload the EMF model itself which will cause EMF to recognize the property
 added in the previous section. Emf models are stored in a file with the 
 extension ``.genmodel``.
 
-.. image:: reload1.jpg  
+.. figure:: reload1.jpg  
 
-.. image:: reload2.jpg  
+   Reloading the genmodel file
 
-.. image:: reload3.jpg  
+.. figure:: reload2.jpg  
+
+   Choosing to reload from annotated Java 
+
+.. figure:: reload3.jpg  
+
+   Choosing the ecore package to be reloaded
 
 Regenerate the Code
 ^^^^^^^^^^^^^^^^^^^
@@ -69,7 +79,9 @@ that was annotated.
 To generate out a new model class the model editor is used to navigate to the 
 relevant interface.
 
-.. image:: regenerate.jpg
+.. figure:: regenerate.jpg
+
+   Regenerating the annotated Java interface
 
 Verify the Changes
 ^^^^^^^^^^^^^^^^^^
