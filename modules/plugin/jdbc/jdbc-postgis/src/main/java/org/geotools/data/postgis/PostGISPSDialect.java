@@ -30,6 +30,7 @@ import org.geotools.jdbc.JDBCDataStore;
 import org.geotools.jdbc.PreparedFilterToSQL;
 import org.geotools.jdbc.PreparedStatementSQLDialect;
 import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.GeometryDescriptor;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -159,6 +160,11 @@ public class PostGISPSDialect extends PreparedStatementSQLDialect {
         delegate.postCreateTable(schemaName, featureType, cx);
     }
 
+    @Override
+    public void postCreateAttribute(AttributeDescriptor att, String tableName,
+            String schemaName, Connection cx) throws SQLException {
+        delegate.postCreateAttribute(att, tableName, schemaName, cx);
+    }
 
     public void registerClassToSqlMappings(Map<Class<?>, Integer> mappings) {
         delegate.registerClassToSqlMappings(mappings);

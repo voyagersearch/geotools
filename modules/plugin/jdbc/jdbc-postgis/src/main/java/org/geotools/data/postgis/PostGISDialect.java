@@ -18,6 +18,7 @@ package org.geotools.data.postgis;
 
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
@@ -65,6 +66,8 @@ import com.vividsolutions.jts.io.WKTReader;
  * @source $URL$
  */
 public class PostGISDialect extends BasicSQLDialect {
+
+    final static String COORD_DIMENSION = "coordDimension";
 
     final static Map<String, Class> TYPE_TO_CLASS_MAP = new HashMap<String, Class>() {
         {
@@ -210,7 +213,7 @@ public class PostGISDialect extends BasicSQLDialect {
     
         boolean geography = "geography".equals(gatt.getUserData().get(
                 JDBCDataStore.JDBC_NATIVE_TYPENAME));
-    
+        
         if (geography) {
             sql.append("encode(ST_AsBinary(");
             encodeColumnName(prefix, gatt.getLocalName(), sql);
@@ -225,8 +228,17 @@ public class PostGISDialect extends BasicSQLDialect {
                 encodeColumnName(prefix, gatt.getLocalName(), sql);
                 sql.append(")),'base64')");
             } else {
+                Integer coordDimension = (Integer) gatt.getUserData().get(COORD_DIMENSION);
+                boolean isZM = coordDimension != null && coordDimension > 3;
+                
                 sql.append("encode(ST_AsEWKB(");
+                if (isZM) {
+                    sql.append("ST_Force_3D(");
+                }
                 encodeColumnName(prefix, gatt.getLocalName(), sql);
+                if (isZM) {
+                    sql.append(")");
+                }
                 sql.append("),'base64')");
             }
         }
@@ -384,7 +396,34 @@ public class PostGISDialect extends BasicSQLDialect {
 
         return null;
     }
-    
+
+    int lookupCoordDimension(Connection cx, String schemaName, String tableName, String columnName, 
+        String gTableName, String gColumnName) throws SQLException {
+
+        Statement statement = null;
+        ResultSet result = null;
+        
+        try {
+            String sqlStatement = "SELECT COORD_DIMENSION FROM " + gTableName + " WHERE " //
+                    + "F_TABLE_SCHEMA = '" + schemaName + "' " //
+                    + "AND F_TABLE_NAME = '" + tableName + "' " //
+                    + "AND " + gColumnName + " = '" + columnName + "'";
+
+            LOGGER.log(Level.FINE, "Coord dimension check; {0} ", sqlStatement);
+            statement = cx.createStatement();
+            result = statement.executeQuery(sqlStatement);
+
+            if (result.next()) {
+                return result.getInt(1);
+            }
+        } finally {
+            dataStore.closeSafe(result);
+            dataStore.closeSafe(statement);
+        }
+
+        return -1;
+    }
+
     @Override
     public void handleUserDefinedType(ResultSet columnMetaData, ColumnMetadata metadata,
             Connection cx) throws SQLException {
@@ -776,6 +815,52 @@ public class PostGISDialect extends BasicSQLDialect {
             }
          } finally {
             dataStore.closeSafe(st);
+        }
+    }
+
+    @Override
+    public void postCreateAttribute(AttributeDescriptor att, String tableName, String schemaName, 
+        Connection cx) throws SQLException {
+        
+        if (!(att instanceof GeometryDescriptor)) {
+            return;
+        }
+
+        //look up the coordinate dimension of this type
+        String columnName = att.getLocalName();
+        
+        if (schemaName == null) {
+            schemaName = "public";
+        }
+
+        // first try geography_columns
+        int coordDimension = -1;
+        // try geography_columns
+        if(supportsGeography(cx)) {
+            try {
+                coordDimension = lookupCoordDimension(cx, schemaName, tableName, columnName, 
+                    "geography_columns", "f_geography_column");
+            } catch(SQLException e) {
+                String msg = String.format("Failed to retrieve information about %s, %s, %s" + 
+                    " from geography_columns", schemaName, tableName, columnName);
+                LOGGER.log(Level.WARNING, msg, e);
+            }
+        }
+        
+        if (coordDimension == -1) {
+            // try geometry_columns
+            try {
+                coordDimension = lookupCoordDimension(cx, schemaName, tableName, columnName, 
+                        "geometry_columns", "f_geometry_column");
+            } catch(SQLException e) {
+                String msg = String.format("Failed to retrieve information about %s, %s, %s" + 
+                    " from geometry_columns", schemaName, tableName, columnName);
+                LOGGER.log(Level.WARNING, msg, e);
+            }
+        }
+
+        if (coordDimension != -1) {
+            att.getUserData().put(COORD_DIMENSION, coordDimension);
         }
     }
 

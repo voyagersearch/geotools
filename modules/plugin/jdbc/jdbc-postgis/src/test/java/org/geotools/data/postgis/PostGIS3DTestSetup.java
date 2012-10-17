@@ -16,7 +16,10 @@
  */
 package org.geotools.data.postgis;
 
+import java.sql.SQLException;
+
 import org.geotools.jdbc.JDBC3DTestSetup;
+import org.geotools.jdbc.JDBCTestSetup;
 
 /**
  * 
@@ -25,9 +28,23 @@ import org.geotools.jdbc.JDBC3DTestSetup;
  */
 public class PostGIS3DTestSetup extends JDBC3DTestSetup {
 
-    protected PostGIS3DTestSetup() {
+    public PostGIS3DTestSetup() {
         super(new PostGISTestSetup());
-    
+    }
+
+    public PostGIS3DTestSetup(JDBCTestSetup delegate) {
+        super(delegate);
+    }
+
+    @Override
+    protected void setUpData() throws Exception {
+        super.setUpData();
+        try {
+            dropPolyZMTable();
+        }
+        catch(SQLException e) {
+        }
+        createPolyZMTable();
     }
 
     @Override
@@ -62,6 +79,19 @@ public class PostGIS3DTestSetup extends JDBC3DTestSetup {
                 + "ST_GeomFromText('POINT(3 0 1)', 4326)," + "'p2')");
     }
 
+    protected void createPolyZMTable() throws Exception {
+        // setup table
+        run("CREATE TABLE \"polyzm\"(\"fid\" serial PRIMARY KEY, \"id\" int, "
+                + "\"geom\" geometry, \"name\" varchar )");
+        run("INSERT INTO GEOMETRY_COLUMNS VALUES('', 'public', 'polyzm', 'geom', 4, '4326', 'POLYGONZM')");
+    
+        // insert data
+        run("INSERT INTO \"polyzm\" (\"id\",\"geom\",\"name\") VALUES (0,"
+                + "ST_GeomFromText('POLYGON ((1 1 1 1, 2 2 2 2, 3 3 3 3, 1 1 1 1))', 4326)," + "'p1')");
+        run("INSERT INTO \"polyzm\" (\"id\",\"geom\",\"name\") VALUES (1,"
+                + "ST_GeomFromText('POLYGON ((4 4 1 1, 5 5 2 2, 6 6 3 3, 4 4 1 1))', 4326)," + "'p2')");
+    }
+
     @Override
     protected void dropLine3DTable() throws Exception {
         run("DELETE FROM  GEOMETRY_COLUMNS WHERE F_TABLE_NAME = 'line3d'");
@@ -80,4 +110,8 @@ public class PostGIS3DTestSetup extends JDBC3DTestSetup {
         run("DROP TABLE \"point3d\"");
     }
 
+    protected void dropPolyZMTable() throws Exception {
+        run("DELETE FROM  GEOMETRY_COLUMNS WHERE F_TABLE_NAME = 'polyzm'");
+        run("DROP TABLE \"polyzm\"");
+    }
 }

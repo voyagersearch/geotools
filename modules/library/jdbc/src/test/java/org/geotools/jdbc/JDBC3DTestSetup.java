@@ -30,7 +30,7 @@ public abstract class JDBC3DTestSetup extends JDBCDelegatingTestSetup {
     }
 
     
-    protected final void setUpData() throws Exception {
+    protected void setUpData() throws Exception {
         //kill all the data
         try {
             dropPoint3DTable();
