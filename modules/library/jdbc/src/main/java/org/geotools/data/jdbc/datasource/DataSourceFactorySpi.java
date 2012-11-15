@@ -76,6 +76,11 @@ import org.geotools.factory.Factory;
  */
 public interface DataSourceFactorySpi extends Factory {
     /**
+     * parameter identifiying a specific data source type
+     */
+    static Param DSTYPE = new Param("dstype", String.class);
+
+    /**
      * Construct a live data source using the params specifed. The returned DataSource may be pooled.
 
      * @param params The full set of information needed to construct a live
@@ -98,6 +103,8 @@ public interface DataSourceFactorySpi extends Factory {
      * @throws IOException
      */
     DataSource createNewDataSource(Map params) throws IOException;
+
+    String getDataSourceId();
 
     /**
      * Name suitable for display to end user.

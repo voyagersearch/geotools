@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import java.util.Map;
 
 import org.apache.commons.dbcp.BasicDataSource;
+import org.geotools.data.jdbc.datasource.DBCPDataSourceFactory;
 import org.geotools.jdbc.JDBCDataStore;
 import org.geotools.jdbc.JDBCDataStoreFactory;
 import org.geotools.jdbc.SQLDialect;
@@ -53,6 +54,11 @@ public class SpatiaLiteDataStoreFactory extends JDBCDataStoreFactory {
      * base location to store sqlite database files
      */
     File baseDirectory = null;
+
+    public SpatiaLiteDataStoreFactory() {
+        super();
+        setDataSourceFactory(new SpatiaLiteDataSourceFactory());
+    }
 
     /**
      * Sets the base location to store sqlite database files.
@@ -133,24 +139,7 @@ public class SpatiaLiteDataStoreFactory extends JDBCDataStoreFactory {
         }
         return "jdbc:sqlite:" + location;
     }
-    
-    @Override
-    public BasicDataSource createDataSource(Map params) throws IOException {
-        //create a datasource
-        BasicDataSource dataSource = new BasicDataSource();
 
-        // driver
-        dataSource.setDriverClassName(getDriverClassName());
-
-        // url
-        dataSource.setUrl(getJDBCUrl(params));
-        
-        addConnectionProperties(dataSource);
-        initializeDataSource(dataSource);
-        
-        return dataSource;
-    }
-    
     static void addConnectionProperties(BasicDataSource dataSource) {
         SQLiteConfig config = new SQLiteConfig();
         config.setSharedCache(true);
@@ -172,6 +161,15 @@ public class SpatiaLiteDataStoreFactory extends JDBCDataStoreFactory {
         } 
         catch (SQLException e) {
             throw (IOException) new IOException().initCause(e);
+        }
+    }
+
+    static class SpatiaLiteDataSourceFactory extends DBCPDataSourceFactory {
+    
+        @Override
+        protected void configureDataSource(BasicDataSource dataSource, Map params) throws IOException {
+            addConnectionProperties(dataSource);
+            initializeDataSource(dataSource);
         }
     }
 }

@@ -18,12 +18,18 @@ package org.geotools.data.jdbc.datasource;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
+import javax.naming.Context;
+import javax.naming.NamingException;
 import javax.sql.DataSource;
 
 import org.geotools.data.DataSourceException;
 import org.geotools.data.DataAccessFactory.Param;
 import org.geotools.factory.GeoTools;
+import org.geotools.jdbc.JDBCDataStoreFactory;
+import org.geotools.jdbc.SQLDialect;
 
 /**
  * A datasource factory SPI doing JDNI lookups
@@ -35,9 +41,11 @@ import org.geotools.factory.GeoTools;
  * @source $URL$
  */
 public class JNDIDataSourceFactory extends AbstractDataSourceFactorySpi {
-    
-    public static final Param DSTYPE = new Param("dstype", String.class,
-            "Must be JNDI", false);
+
+    public static final String J2EERootContext = "java:comp/env/";
+
+    public static final Param DSTYPE = new Param(DataSourceFactorySpi.DSTYPE.key,
+            DataSourceFactorySpi.DSTYPE.getType(), "Must be JNDI", false);
 
     public static final Param JNDI_REFNAME = new Param("jdniReferenceName", String.class,
             "The path where the connection pool must be located", true);
@@ -49,16 +57,50 @@ public class JNDIDataSourceFactory extends AbstractDataSourceFactorySpi {
     }
     
     public boolean canProcess(Map params) {
-        return super.canProcess(params) && "JNDI".equals(params.get("dstype"));
+        return super.canProcess(params) && getDataSourceId().equals(params.get("dstype"));
     }
 
     public DataSource createNewDataSource(Map params) throws IOException {
-        String refName = (String) JNDI_REFNAME.lookUp(params);
+        String jndiName = (String) JNDI_REFNAME.lookUp(params);
+        if (jndiName == null)
+            throw new IOException("Missing " + JNDI_REFNAME.description);
+
+        Context ctx = null;
+        DataSource ds = null;        
+        
         try {
-            return (DataSource) GeoTools.getInitialContext(GeoTools.getDefaultHints()).lookup(refName);
-        } catch (Exception e) {
-            throw new DataSourceException("Could not find the specified data source in JNDI", e);
+            ctx = GeoTools.getInitialContext(GeoTools.getDefaultHints());
+        } catch (NamingException e) {
+            throw new RuntimeException(e);
         }
+            
+        try {    
+            ds = (DataSource) ctx.lookup(jndiName);
+        } catch (NamingException e1) {
+            // check if the user did not specify "java:comp/env" 
+            // and this code is running in a J2EE environment
+            try {
+                if (jndiName.startsWith(J2EERootContext)==false)  {
+                    ds = (DataSource) ctx.lookup(J2EERootContext+jndiName);
+                    // success --> issue a waring
+                    Logger.getLogger(this.getClass().getName()).log(
+                                Level.WARNING,"Using "+J2EERootContext+jndiName+" instead of " +
+                                jndiName+ " would avoid an unnecessary JNDI lookup");
+                }    
+            } catch (NamingException e2) {
+                // do nothing, was only a try
+            }                            
+        }    
+        
+        if (ds == null)
+            throw new IOException("Cannot find JNDI data source: " + jndiName);
+        else
+            return ds;
+    }
+
+    @Override
+    public String getDataSourceId() {
+        return "JNDI";
     }
 
     public String getDescription() {

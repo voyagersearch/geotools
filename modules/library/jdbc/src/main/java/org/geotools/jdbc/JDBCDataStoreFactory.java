@@ -31,6 +31,8 @@ import org.geotools.data.AbstractDataStoreFactory;
 import org.geotools.data.DataStore;
 import org.geotools.data.Parameter;
 import org.geotools.data.jdbc.datasource.DBCPDataSource;
+import org.geotools.data.jdbc.datasource.DBCPDataSourceFactory;
+import org.geotools.data.jdbc.datasource.DataSourceFactorySpi;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.feature.type.FeatureTypeFactoryImpl;
 import org.geotools.util.SimpleInternationalString;
@@ -124,7 +126,19 @@ public abstract class JDBCDataStoreFactory extends AbstractDataStoreFactory {
             "SQL statement executed when the connection is released to the pool", false, null,
             Collections.singletonMap(Parameter.IS_LARGE_TEXT, Boolean.TRUE));
 
-    
+    /**
+     * factory used to create actual data source, default to apache dbcp
+     */
+    protected DataSourceFactorySpi dataSourceFactory = new DBCPDataSourceFactory();
+
+    public void setDataSourceFactory(DataSourceFactorySpi dataSourceFactory) {
+        this.dataSourceFactory = dataSourceFactory;
+    }
+
+    public DataSourceFactorySpi getDataSourceFactory() {
+        return dataSourceFactory;
+    }
+
     @Override
     public String getDisplayName() {
         return getDescription();
@@ -385,84 +399,69 @@ public abstract class JDBCDataStoreFactory extends AbstractDataStoreFactory {
      * </p>
      */
     protected DataSource createDataSource(Map params, SQLDialect dialect) throws IOException {
-        BasicDataSource dataSource = createDataSource(params);
 
-        // some default data source behaviour
-        if(dialect instanceof PreparedStatementSQLDialect) {
-            dataSource.setPoolPreparedStatements(true);
-            
-            // check if the dialect exposes the max prepared statements param 
-            Map<String, Serializable> testMap = new HashMap<String, Serializable>();
-            setupParameters(testMap);
-            if(testMap.containsKey(MAX_OPEN_PREPARED_STATEMENTS.key)) {
-                Integer maxPreparedStatements = (Integer) MAX_OPEN_PREPARED_STATEMENTS.lookUp(params);
-                // limit prepared statements
-                if(maxPreparedStatements != null && maxPreparedStatements > 0)
-                    dataSource.setMaxOpenPreparedStatements(maxPreparedStatements);
-                // disable statement caching fully if necessary
-                if(maxPreparedStatements != null && maxPreparedStatements < 0)
-                    dataSource.setPoolPreparedStatements(false);
-            }
+        // check if the dialect exposes the max prepared statements param 
+        Map<String, Param> paramMap = new HashMap<String, Param>();
+        setupParameters(paramMap);
+
+        Map dsParams = new HashMap();
+        dsParams.put(DataSourceFactorySpi.DSTYPE.key, dataSourceFactory.getDataSourceId());
+        dsParams.put(DBCPDataSourceFactory.JDBC_URL.key, getJDBCUrl(params));
+        dsParams.put(DBCPDataSourceFactory.DRIVERCLASS.key, getDriverClassName());
+        dsParams.put(DBCPDataSourceFactory.TESTONCREATE.key, false);
+        
+        String user = (String) paramMap.get(USER.key).lookUp(params);
+        if (user != null) {
+            dsParams.put(DBCPDataSourceFactory.USERNAME.key, user);
         }
-
-        return new DBCPDataSource(dataSource);
-    }
-
-    /**
-     * DataSource access allowing SQL use: intended to allow client code to query available schemas.
-     * <p>
-     * This DataSource is the clients responsibility to close() when they are finished using it.
-     * </p> 
-     * @param params Map of connection parameter.
-     * @return DataSource for SQL use
-     * @throws IOException
-     */
-    public BasicDataSource createDataSource(Map params) throws IOException {
-        //create a datasource
-        BasicDataSource dataSource = new BasicDataSource();
-
-        // driver
-        dataSource.setDriverClassName(getDriverClassName());
-
-        // url
-        dataSource.setUrl(getJDBCUrl(params));
-
-        // username
-        String user = (String) USER.lookUp(params);
-        dataSource.setUsername(user);
 
         // password
         String passwd = (String) PASSWD.lookUp(params);
         if (passwd != null) {
-            dataSource.setPassword(passwd);
+            dsParams.put(DBCPDataSourceFactory.PASSWORD.key, passwd);
         }
-        
+
         // max wait
         Integer maxWait = (Integer) MAXWAIT.lookUp(params);
         if (maxWait != null && maxWait != -1) {
-            dataSource.setMaxWait(maxWait * 1000);
+            dsParams.put(DBCPDataSourceFactory.MAXWAIT.key, maxWait);
         }
-        
+
         // connection pooling options
         Integer minConn = (Integer) MINCONN.lookUp(params);
         if ( minConn != null ) {
-            dataSource.setMinIdle(minConn);    
+            dsParams.put(DBCPDataSourceFactory.MINIDLE.key, minConn);
         }
-        
+
         Integer maxConn = (Integer) MAXCONN.lookUp(params);
         if ( maxConn != null ) {
-            dataSource.setMaxActive(maxConn);
+            dsParams.put(DBCPDataSourceFactory.MAXACTIVE.key, maxConn);
         }
-        
+
         Boolean validate = (Boolean) VALIDATECONN.lookUp(params);
         if(validate != null && validate && getValidationQuery() != null) {
-            dataSource.setTestOnBorrow(true);
-            dataSource.setValidationQuery(getValidationQuery());
+            dsParams.put(DBCPDataSourceFactory.VALIDATECONN.key, true);
+            dsParams.put(DBCPDataSourceFactory.VALIDATEQUERY.key, getValidationQuery());
         }
-        
-        // some datastores might need this
-        dataSource.setAccessToUnderlyingConnectionAllowed(true);
-        return dataSource;
+
+        if(dialect instanceof PreparedStatementSQLDialect) {
+            dsParams.put(DBCPDataSourceFactory.POOLPS.key, true);
+            
+            if(paramMap.containsKey(MAX_OPEN_PREPARED_STATEMENTS.key)) {
+                Integer maxPreparedStatements = (Integer) MAX_OPEN_PREPARED_STATEMENTS.lookUp(params);
+                // limit prepared statements
+                dsParams.put(DBCPDataSourceFactory.MAXOPENPS.key, maxPreparedStatements);
+            }
+        }
+
+        return dataSourceFactory.createDataSource(dsParams);
+    }
+
+    /**
+     * @deprecated see {@link DBCPDataSourceFactory}.
+     */
+    public final BasicDataSource createDataSource(Map params) throws IOException {
+        return (BasicDataSource) createDataSource(params, null);
     }
 
     /**

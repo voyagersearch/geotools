@@ -18,6 +18,7 @@
 package org.geotools.jdbc;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,6 +28,8 @@ import javax.naming.NamingException;
 import javax.sql.DataSource;
 
 import org.geotools.data.DataStore;
+import org.geotools.data.jdbc.datasource.DataSourceFactorySpi;
+import org.geotools.data.jdbc.datasource.JNDIDataSourceFactory;
 import org.geotools.factory.GeoTools;
 
 /**
@@ -46,7 +49,7 @@ import org.geotools.factory.GeoTools;
 public abstract class JDBCJNDIDataStoreFactory extends JDBCDataStoreFactory {
 
     
-    public final static String J2EERootContext="java:comp/env/";
+    public final static String J2EERootContext=JNDIDataSourceFactory.J2EERootContext;
     /**
      * JNDI data source name
      */
@@ -60,6 +63,8 @@ public abstract class JDBCJNDIDataStoreFactory extends JDBCDataStoreFactory {
     
     protected JDBCJNDIDataStoreFactory(JDBCDataStoreFactory delegate) {
         this.delegate = delegate;
+        delegate.setDataSourceFactory(new JNDIDataSourceFactory());
+        setDataSourceFactory(new JNDIDataSourceFactory());
     }
     
     /**
@@ -87,47 +92,6 @@ public abstract class JDBCJNDIDataStoreFactory extends JDBCDataStoreFactory {
     @Override
     protected String getJDBCUrl(Map params) throws IOException {
         return null;
-    }
-
-    /**
-     * Override to create the datasource from the external JNDI conection.
-     */
-    protected DataSource createDataSource(Map params, SQLDialect dialect) throws IOException {
-        String jndiName = (String) JNDI_REFNAME.lookUp(params);
-        if (jndiName == null)
-            throw new IOException("Missing " + JNDI_REFNAME.description);
-
-        Context ctx = null;
-        DataSource ds = null;        
-        
-        try {
-            ctx = GeoTools.getInitialContext(GeoTools.getDefaultHints());
-        } catch (NamingException e) {
-            throw new RuntimeException(e);
-        }
-            
-        try {    
-            ds = (DataSource) ctx.lookup(jndiName);
-        } catch (NamingException e1) {
-            // check if the user did not specify "java:comp/env" 
-            // and this code is running in a J2EE environment
-            try {
-                if (jndiName.startsWith(J2EERootContext)==false)  {
-                    ds = (DataSource) ctx.lookup(J2EERootContext+jndiName);
-                    // success --> issue a waring
-                    Logger.getLogger(this.getClass().getName()).log(
-                		Level.WARNING,"Using "+J2EERootContext+jndiName+" instead of " +
-                		jndiName+ " would avoid an unnecessary JNDI lookup");
-                }    
-            } catch (NamingException e2) {
-                // do nothing, was only a try
-            }                            
-        }    
-        
-        if (ds == null)
-            throw new IOException("Cannot find JNDI data source: " + jndiName);
-        else
-            return ds;
     }
 
     /**
@@ -184,6 +148,17 @@ public abstract class JDBCJNDIDataStoreFactory extends JDBCDataStoreFactory {
 
     public DataStore createNewDataStore(Map params) throws IOException {
         return delegate.createNewDataStore(params);
+    }
+
+    @Override
+    protected DataSource createDataSource(Map params, SQLDialect dialect)
+            throws IOException {
+
+        Map dsParams = new HashMap();
+        dsParams.put(DataSourceFactorySpi.DSTYPE.key, dataSourceFactory.getDataSourceId());
+        dsParams.put(JNDIDataSourceFactory.JNDI_REFNAME.key, JNDI_REFNAME.lookUp(params));
+
+        return dataSourceFactory.createDataSource(dsParams);
     }
 
     public Map getImplementationHints() {

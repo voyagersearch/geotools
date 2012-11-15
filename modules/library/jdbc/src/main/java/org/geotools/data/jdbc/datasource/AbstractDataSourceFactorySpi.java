@@ -29,6 +29,15 @@ import org.geotools.data.DataAccessFactory.Param;
  */
 public abstract class AbstractDataSourceFactorySpi implements DataSourceFactorySpi {
 
+    @Override
+    public String getDataSourceId() {
+        String id = getDisplayName();
+        if (id.endsWith("DataSource")) {
+            id = id.substring(0, id.length()-10);
+        }
+        return id;
+    }
+
     /**
      * Default Implementation abuses the naming convention.
      * <p>

@@ -25,6 +25,7 @@ import javax.sql.DataSource;
 import junit.framework.TestCase;
 
 import org.apache.commons.dbcp.BasicDataSource;
+import org.geotools.data.jdbc.datasource.DBCPDataSource;
 import org.geotools.data.jdbc.datasource.DBCPDataSourceFactory;
 import org.geotools.data.jdbc.datasource.DataSourceFinder;
 
@@ -49,7 +50,7 @@ public class DataSourceFinderTest extends TestCase {
         
         DataSource source =  DataSourceFinder.getDataSource(map);
         assertNotNull(source);
-        assertTrue(source instanceof BasicDataSource);
+        assertTrue(source instanceof DBCPDataSource);
     }
     
 //    public void testJNDIFactory() throws Exception {

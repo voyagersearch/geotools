@@ -18,12 +18,14 @@ package org.geotools.data.h2;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 
 import javax.sql.DataSource;
 
 import org.apache.commons.dbcp.BasicDataSource;
 import org.geotools.data.jdbc.datasource.DBCPDataSource;
+import org.geotools.data.jdbc.datasource.DBCPDataSourceFactory;
 import org.geotools.jdbc.JDBCDataStore;
 import org.geotools.jdbc.JDBCDataStoreFactory;
 import org.geotools.jdbc.SQLDialect;
@@ -124,22 +126,25 @@ public class H2DataStoreFactory extends JDBCDataStoreFactory {
         //return new H2DialectPrepared(dataStore);
     }
 
-    protected DataSource createDataSource(Map params, SQLDialect dialect) throws IOException {
+    @Override
+    protected String getJDBCUrl(Map params) throws IOException {
+
+        //TODO: move this to getJdbcURL() and avoid overriding this method
         String database = (String) DATABASE.lookUp(params);
         String host = (String) HOST.lookUp(params);
-        BasicDataSource dataSource = new BasicDataSource();
-        
+
+        String url = null;
         if (host != null && !host.equals("")) {
             Integer port = (Integer) PORT.lookUp(params);
             if (port != null && !port.equals("")) {
-                dataSource.setUrl("jdbc:h2:tcp://" + host + ":" + port + "/" + database);
+                url = "jdbc:h2:tcp://" + host + ":" + port + "/" + database;
             }
             else {
-                dataSource.setUrl("jdbc:h2:tcp://" + host + "/" + database);
+                url = "jdbc:h2:tcp://" + host + "/" + database;
             }
         } else if (baseDirectory == null) {
             //use current working directory
-            dataSource.setUrl("jdbc:h2:" + database);
+            url = "jdbc:h2:" + database;
         } else {
             //use directory specified if the patch is relative
             String location;
@@ -150,22 +155,10 @@ public class H2DataStoreFactory extends JDBCDataStoreFactory {
                 location = database;
             }
 
-            dataSource.setUrl("jdbc:h2:file:" + location);
+            url = "jdbc:h2:file:" + location;
         }
-        
-        String username = (String) USER.lookUp(params);
-        if (username != null) {
-            dataSource.setUsername(username);
-        }
-        String password = (String) PASSWD.lookUp(params);
-        if (password != null) {
-            dataSource.setPassword(password);
-        }
-        
-        dataSource.setDriverClassName("org.h2.Driver");
-        dataSource.setPoolPreparedStatements(false);
 
-        return new DBCPDataSource(dataSource);
+        return url;
     }
 
     protected JDBCDataStore createDataStoreInternal(JDBCDataStore dataStore, Map params)
