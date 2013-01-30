@@ -376,6 +376,7 @@ public class Encoder {
         if (indentSize < 0) {
             throw new IllegalArgumentException("indentSize shall be >= 0: " + indentSize);
         }
+        setIndenting(true);
         outputProps.setProperty(INDENT_AMOUNT_KEY, String.valueOf(indentSize));
     }
 
