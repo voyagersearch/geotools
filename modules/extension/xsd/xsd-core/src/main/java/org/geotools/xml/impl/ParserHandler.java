@@ -341,7 +341,8 @@ public class ParserHandler extends DefaultHandler {
 
             //look up schema overrides
             List<XSDSchemaLocator> locators = Arrays.asList(findSchemaLocators());
-            List<XSDSchemaLocationResolver> resolvers = Arrays.asList(findSchemaLocationResolvers());
+            List<XSDSchemaLocationResolver> resolvers = 
+                new ArrayList<XSDSchemaLocationResolver>(Arrays.asList(findSchemaLocationResolvers()));
 
             if ((locations != null) && (locations.length > 0)) {
                 //parse each namespace location pair into schema objects
@@ -396,7 +397,14 @@ public class ParserHandler extends DefaultHandler {
                                 throw (SAXException) new SAXException( "error validating" ).initCause(e);
                             }    
                         }
-                        
+
+                        if (namespace != null && !namespace.equals(config.getNamespaceURI())) {
+                            //the target namespace of this schema is different than that of the 
+                            // configuration, this usually menas a custom schema so add a resolver
+                            // that will resolve included/imported schemas relative to this 
+                            // schema location
+                           resolvers.add(new RelativeSchemaLocationResolver(namespace));
+                        }
                         //parse the document
                         try {
                             schemas[i / 2] = Schemas.parse(location, locators, resolvers, uriHandlers);
