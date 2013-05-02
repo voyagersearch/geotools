@@ -31,11 +31,13 @@ import org.geotools.data.store.FilteringFeatureIterator;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.feature.FeatureCollection;
 import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.opengis.feature.FeatureVisitor;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory2;
 import org.opengis.filter.sort.SortBy;
+import org.opengis.util.ProgressListener;
 
 /**
  * Decorates a feature collection with one that filters content.
@@ -143,5 +145,11 @@ public class FilteringSimpleFeatureCollection extends DecoratingSimpleFeatureCol
 		//calculate manually
 		return DataUtilities.bounds( this );
 	}
+
+    @Override
+    public void accepts(FeatureVisitor visitor, ProgressListener progress) throws IOException {
+        //calculate manually
+        DataUtilities.visit(this, visitor, progress);
+    }
 
 }
