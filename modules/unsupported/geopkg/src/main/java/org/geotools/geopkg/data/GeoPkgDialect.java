@@ -1,0 +1,169 @@
+package org.geotools.geopkg.data;
+
+import static java.lang.String.format;
+import static org.geotools.geopkg.GeoPackage.*;
+
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+
+import org.geotools.geometry.jts.Geometries;
+import org.geotools.geopkg.Entry;
+import org.geotools.geopkg.FeatureEntry;
+import org.geotools.geopkg.Entry.DataType;
+import org.geotools.geopkg.GeoPackage;
+import org.geotools.geopkg.geom.GeoPkgGeomReader;
+import org.geotools.geopkg.geom.GeoPkgGeomWriter;
+import org.geotools.jdbc.JDBCDataStore;
+import org.geotools.jdbc.PreparedStatementSQLDialect;
+import org.opengis.feature.type.GeometryDescriptor;
+
+import com.vividsolutions.jts.geom.Envelope;
+import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.GeometryFactory;
+
+public class GeoPkgDialect extends PreparedStatementSQLDialect {
+
+    public GeoPkgDialect(JDBCDataStore dataStore) {
+        super(dataStore);
+    }
+
+    @Override
+    public void initializeConnection(Connection cx) throws SQLException {
+        new GeoPackage(dataStore.getDataSource()).init(cx);
+    }
+
+    @Override
+    public boolean includeTable(String schemaName, String tableName, Connection cx) throws SQLException {
+        PreparedStatement ps = cx.prepareStatement("SELECT * FROM geopackage_contents WHERE" +
+            " table_name = ? AND data_type = ?");
+        try {
+            ps.setString(1, tableName);
+            ps.setString(2, DataType.Feature.value());
+
+            ResultSet rs = ps.executeQuery();
+            try {
+                return rs.next();
+            }
+            finally {
+                rs.close();
+            }
+        }
+        finally {
+            dataStore.closeSafe(ps);
+        }
+    }
+
+    @Override
+    public void encodeGeometryEnvelope(String tableName, String geometryColumn, StringBuffer sql) {
+        encodeColumnName(null, geometryColumn, sql);
+    }
+    
+    @Override
+    public Envelope decodeGeometryEnvelope(ResultSet rs, int column, Connection cx)
+        throws SQLException, IOException {
+        Geometry g = geometry(rs.getBytes(column));
+        return g != null ? g.getEnvelopeInternal() : null;
+    }
+
+    @Override
+    public Geometry decodeGeometryValue(GeometryDescriptor descriptor, ResultSet rs, String column, 
+        GeometryFactory factory, Connection cx) throws IOException, SQLException {
+        return geometry(rs.getBytes(column));
+    }
+
+    @Override
+    public void setGeometryValue(Geometry g, int srid, Class binding,
+            PreparedStatement ps, int column) throws SQLException {
+        if (g == null) {
+            ps.setNull(1, Types.BLOB);
+        }
+        else {
+            try {
+                ps.setBytes(column, new GeoPkgGeomWriter().write(g));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    Geometry geometry(byte[] b) throws IOException {
+        return b != null ? new GeoPkgGeomReader().read(b) : null;
+    }
+
+    @Override
+    public String getGeometryTypeName(Integer type) {
+        return "BLOB";
+    }
+
+    @Override
+    public void registerSqlTypeNameToClassMappings( Map<String, Class<?>> mappings) {
+        super.registerSqlTypeNameToClassMappings(mappings);
+        mappings.put("DOUBLE", Double.class);
+    }
+
+    @Override
+    public void registerClassToSqlMappings(Map<Class<?>, Integer> mappings) {
+        super.registerClassToSqlMappings(mappings);
+
+        for (Geometries g : Geometries.values()) {
+            mappings.put(g.getBinding(), Types.BLOB);
+        }
+
+        //override some internal defaults
+        mappings.put(Long.class, Types.INTEGER);
+        mappings.put(Double.class, Types.REAL);
+    }
+
+    @Override
+    public Class<?> getMapping(ResultSet columns, Connection cx) throws SQLException {
+        int type = columns.getInt("DATA_TYPE");
+
+        //sqlite seems to map blobs to varchar 
+        if (type == Types.VARCHAR) {
+            String tbl = columns.getString("TABLE_NAME");
+            String col = columns.getString("COLUMN_NAME"); 
+
+            String sql = format(
+                "SELECT b.geometry_type" +
+                 " FROM %s a, %s b" + 
+                " WHERE a.table_name = b.f_table_name" +
+                  " AND b.f_table_name = ?" + 
+                  " AND b.f_geometry_column = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS);
+
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine(String.format("%s; 1=%s, 2=%s", sql, tbl, col));
+            }
+
+            PreparedStatement ps = cx.prepareStatement(sql);
+            try {
+                ps.setString(1, tbl);
+                ps.setString(2, col);
+
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    String t = rs.getString(1);
+                    Geometries g = Geometries.getForName(t);
+                    if (g != null) {
+                        return g.getBinding();
+                    }
+                }
+                
+                rs.close();
+            }
+            finally {
+                dataStore.closeSafe(ps);
+            }
+        }
+        
+        return null;
+    }
+}
