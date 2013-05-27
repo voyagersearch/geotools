@@ -185,11 +185,14 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
     public void postCreateTable(String schemaName, SimpleFeatureType featureType, Connection cx) 
         throws SQLException, IOException {
      
-        FeatureEntry fe = new FeatureEntry();
-        fe.setIdentifier(featureType.getTypeName());
-        fe.setDescription(featureType.getTypeName());
-        fe.setTableName(featureType.getTypeName());
-        fe.setLastChange(new Date());
+        FeatureEntry fe = (FeatureEntry) featureType.getUserData().get(FeatureEntry.class);
+        if (fe == null) {
+            fe = new FeatureEntry();
+            fe.setIdentifier(featureType.getTypeName());
+            fe.setDescription(featureType.getTypeName());
+            fe.setTableName(featureType.getTypeName());
+            fe.setLastChange(new Date());
+        }
         
         GeometryDescriptor gd = featureType.getGeometryDescriptor(); 
         if (gd != null) {

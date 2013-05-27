@@ -3,7 +3,9 @@ package org.geotools.geopkg;
 import static java.lang.String.format;
 import static org.geotools.geopkg.PreparedStatementBuilder.prepare;
 
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
@@ -26,6 +28,8 @@ import javax.sql.DataSource;
 
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.commons.io.IOUtils;
+import org.geotools.coverage.grid.GridCoverage2D;
+import org.geotools.coverage.grid.io.AbstractGridFormat;
 import org.geotools.data.DataStore;
 import org.geotools.data.DefaultTransaction;
 import org.geotools.data.FeatureWriter;
@@ -36,11 +40,16 @@ import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.simple.SimpleFeatureReader;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.geotools.data.simple.SimpleFeatureWriter;
+import org.geotools.factory.Hints;
+import org.geotools.geometry.GeneralEnvelope;
 import org.geotools.geometry.jts.Geometries;
 import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.geotools.geopkg.RasterEntry.Rectification;
 import org.geotools.jdbc.JDBCDataStore;
 import org.geotools.referencing.CRS;
 import org.geotools.util.logging.Logging;
+import org.opengis.coverage.grid.GridCoverageReader;
+import org.opengis.coverage.grid.GridCoverageWriter;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.GeometryDescriptor;
@@ -151,20 +160,6 @@ public class GeoPackage {
 
         this.connPool = new GeoPkgDataStoreFactory().createDataSource(params);
     }
-//
-//    /**
-//     * The underlying database file.
-//     */
-//    public File getFile() {
-//        return file;
-//    }
-//
-//    /**
-//     * The database data source.
-//     */
-//    public DataSource getDataSource() {
-//        return connPool;
-//    }
 
     GeoPackage(DataSource dataSource) {
         this.connPool = dataSource;
@@ -175,15 +170,22 @@ public class GeoPackage {
         this.connPool = dataStore.getDataSource();
     }
 
-//    public void init() throws SQLException {
-//        Connection cx = connPool.getConnection();
-//        try {
-//            init(cx);
-//        }
-//        finally {
-//            cx.close();
-//        }
-//    }
+    /**
+     * The underlying database file.
+     * <p>
+     * Note: this value may be <code>null</code> depending on how the geopackage was initialized. 
+     * </p>
+     */
+    public File getFile() {
+        return file;
+    }
+
+    /**
+     * The database data source.
+     */
+    public DataSource getDataSource() {
+        return connPool;
+    }
 
     /**
      * Initializes the geopackage database.
@@ -191,8 +193,28 @@ public class GeoPackage {
      * This method creates all the necessary metadata tables.
      * </p> 
      */
-    
-    public void init(Connection cx) throws SQLException {
+    public void init() throws IOException {
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                init(cx);
+            }
+            finally {
+                cx.close();
+            }
+        }
+        catch(SQLException e) {
+            throw new IOException(e);
+        }
+    }
+
+    /**
+     * Initializes a geopackage connection.
+     * <p>
+     * This method creates all the necessary metadata tables.
+     * </p> 
+     */
+    void init(Connection cx) throws SQLException {
         
         //runSQL("SELECT InitSpatialMetaData();");
         runScript(SPATIAL_REF_SYS + ".sql", cx);
@@ -200,6 +222,7 @@ public class GeoPackage {
         runScript(GEOPACKAGE_CONTENTS + ".sql", cx);
         runScript(TILE_TABLE_METADATA +".sql", cx);
         runScript(TILE_MATRIX_METADATA + ".sql", cx);
+        runScript(RASTER_COLUMNS + ".sql", cx);
 
         Statement st = cx.createStatement();
         ResultSet rs = st.executeQuery("SELECT count(*) FROM " + SPATIAL_REF_SYS);
@@ -213,7 +236,7 @@ public class GeoPackage {
         rs.close();
         st.close();
         
-            //runScript("raster_columns.sql");
+            
     }
 
     /**
@@ -415,13 +438,16 @@ public class GeoPackage {
         //mark changed
         e.setLastChange(new Date());
 
+        //pass in teh feature entry to the datsatore as user data
+        schema.getUserData().put(FeatureEntry.class, e);
+
         JDBCDataStore dataStore = dataStore();
 
         //create the feature table
         dataStore.createSchema(schema);
 
         //update the metadata tables
-        addGeoPackageContentsEntry(e);
+        //addGeoPackageContentsEntry(e);
 
         //update the entry
         entry.init(e);
@@ -569,6 +595,11 @@ public class GeoPackage {
         sb.append(format("INSERT INTO %s (table_name, data_type, identifier", GEOPACKAGE_CONTENTS));
         vals.append("VALUES (?,?,?");
 
+        if (e.getDescription() != null) {
+            sb.append(", description");
+            vals.append(",?");
+        }
+
         if (e.getLastChange() != null) {
             sb.append(", last_change");
             vals.append(",?");
@@ -577,7 +608,7 @@ public class GeoPackage {
             sb.append(", min_x, min_y, max_x, max_y");
             vals.append(",?,?,?,?");
         }
-
+        
         if (e.getSrid() != null) {
             sb.append(", srid");
             vals.append(",?");
@@ -596,7 +627,11 @@ public class GeoPackage {
                     .set(e.getTableName())
                     .set(e.getDataType().value())
                     .set(e.getIdentifier());
-                    //.set(e.getDescription());
+
+                if (e.getDescription() != null) {
+                    psb.set(e.getDescription());
+                }
+
                 if (e.getLastChange() != null) {
                     psb.set(DATE_FORMAT.format(e.getLastChange()));
                 }
@@ -654,290 +689,290 @@ public class GeoPackage {
     // raster methods
     //
 
-//    /**
-//     * Lists all the raster entries in the geopackage. 
-//     */
-//    public List<RasterEntry> rasters() throws IOException {
-//        try {
-//            Connection cx = connPool.getConnection();
-//            try {
-//                String sql = format(
-//                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
-//                 " FROM %s a, %s b" + 
-//                " WHERE a.table_name = b.r_table_name" + 
-//                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
-//                PreparedStatement ps = cx.prepareStatement(sql);
-//                ps.setString(1, DataType.Raster.value());
-//
-//                ResultSet rs = ps.executeQuery();
-//
-//                List<RasterEntry> entries = new ArrayList();
-//                while(rs.next()) {
-//                    entries.add(createRasterEntry(rs));
-//                }
-//                rs.close();
-//                ps.close();
-//
-//                return entries;
-//            }
-//            finally {
-//                cx.close();
-//            }
-//        }
-//        catch(SQLException e) {
-//            throw new IOException(e);
-//        }
-//    }
-//
-//    /**
-//     * Looks up a raster entry by name.
-//     * 
-//     * @param name THe name of the raster entry.
-//     * @return The entry, or <code>null</code> if no such entry exists.
-//     */
-//    public RasterEntry raster(String name) throws IOException {
-//        try {
-//            Connection cx = connPool.getConnection();
-//            try {
-//                String sql = format(
-//                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
-//                 " FROM %s a, %s b" + 
-//                " WHERE a.table_name = ?" + 
-//                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
-//                PreparedStatement ps = cx.prepareStatement(sql);
-//                ps.setString(1, name);
-//                ps.setString(2, DataType.Raster.value());
-//
-//                ResultSet rs = ps.executeQuery();
-//                try {
-//                    if (rs.next()) {
-//                        return createRasterEntry(rs);
-//                    }
-//                }
-//                finally {
-//                    rs.close();
-//                    ps.close();
-//                }
-//            }
-//            finally {
-//                cx.close();
-//            }
-//        }
-//        catch(SQLException e) {
-//            throw new IOException(e);
-//        }
-//
-//        return null;
-//    }
-//
-//    /**
-//     * Adds a new raster dataset to the geopackage.
-//     *
-//     * @param entry Contains metadata about the raster entry.
-//     * @param raster The raster dataset.
-//     * @param format The format in which to store the raster in the database.
-//     * 
-//     * @throws IOException Any errors occurring while adding the new feature dataset.
-//     */
-//    public void add(RasterEntry entry, GridCoverage2D raster, AbstractGridFormat format) 
-//        throws IOException {
-//
-//        RasterEntry e = new RasterEntry();
-//        e.init(entry);
-//
-//        if (e.getTableName() == null) {
-//            if (raster.getName() == null) {
-//                throw new IllegalArgumentException("No table name specified for raster");
-//            }
-//            e.setTableName(raster.getName().toString());
-//        }
-//
-//        if (e.getRasterColumn() == null) {
-//            e.setRasterColumn("raster");
-//        }
-//
-//        if (e.getSrid() == null) {
-//            try {
-//                e.setSrid(findSRID(raster));
-//            } catch (Exception ex) {
-//                throw new IOException(ex);
-//            }
-//        }
-//        if (e.getSrid() == null) {
-//            throw new IllegalArgumentException("Entry must have srid");
-//        }
-//
-//        if (e.getBounds() == null) {
-//            e.setBounds(findBounds(raster));
-//        }
-//        if (e.getBounds() == null) {
-//            throw new IllegalArgumentException("Entry must have bounds");
-//        }
-//
-//        if (e.getIdentifier() == null) {
-//            e.setIdentifier(raster.getName().toString());
-//        }
-//        if (e.getDescription() == null) {
-//            e.setDescription(e.getIdentifier());
-//        }
-//
-//        //TODO: comperession quality and georectification
-//        e.setCompressionQualityFactor(1.0);
-//        e.setGeoRectification(Rectification.Geo);
-//
-//        e.setLastChange(new Date());
-//
-//        //write out raster to temp file
-//        File tmpFile = File.createTempFile(e.getTableName(), "raster");
-//
-//        GridCoverageWriter writer = format.getWriter(tmpFile);
-//        writer.write(raster, null);
-//        writer.dispose();
-//
-//        //create the raster table
-//        try {
-//            Connection cx = connPool.getConnection();
-//            try {
-//                Statement st = cx.createStatement();
-//                try {
-//                    String sql = format("CREATE TABLE %s (id INTEGER PRIMARY KEY AUTOINCREMENT, %s BLOB NOT NULL)", 
-//                        e.getTableName(), e.getRasterColumn());
-//                    LOGGER.fine(sql);
-//
-//                    st.execute(sql);
-//                }
-//                finally {
-//                    close(st);
-//                }
-//
-//                //TODO: ideally we would stream this in
-//                BufferedInputStream bin = new BufferedInputStream(new FileInputStream(tmpFile));
-//                byte[] blob = IOUtils.toByteArray(bin);
-//
-//                try {
-//                    PreparedStatement ps = prepare(cx, 
-//                        format("INSERT INTO %s (%s) VALUES (?)",e.getTableName(), e.getRasterColumn()))
-//                    .set(blob).log(Level.FINE).statement();
-//                    ps.execute();
-//                    ps.close();
-//                }
-//                finally {
-//                    bin.close();
-//                }
-//            }
-//            finally {
-//                close(cx);
-//            }
-//        }
-//        catch(SQLException ex) {
-//            throw new IOException(ex);
-//        }
-//
-//        tmpFile.delete();
-//
-//        addGeoPackageContentsEntry(e);
-//        addRasterColumnsEntry(e);
-//
-//        entry.init(e);
-//    }
-//
-//    /**
-//     * Returns a reader for the contents of a raster dataset.
-//     * 
-//     * @param entry The raster entry.
-//     * @param format Format of the raster dataset.
-//     */
-//    public GridCoverageReader reader(RasterEntry entry, AbstractGridFormat format) throws IOException {
-//        try {
-//            Connection cx = connPool.getConnection();
-//            try {
-//                Statement st = cx.createStatement();
-//                try {
-//                    ResultSet rs = st.executeQuery(
-//                        format("SELECT %s FROM %s;", entry.getRasterColumn(), entry.getTableName()));
-//                    if (rs.next()) {
-//                        byte[] blob = rs.getBytes(1);
-//                        Hints hints = new Hints();
-//                        if (format instanceof WorldImageFormat) {
-//                            //TODO: get this patch submitted
-//                            //hints.put(WorldImageFormat.ORIGINAL_ENVELOPE, toGeneralEnvelope(entry.getBounds()));
-//                        }
-//                        return format.getReader(blob, hints);
-//                    }
-//                }
-//                finally {
-//                    close(st);
-//                }
-//            }
-//            finally {
-//                close(cx);
-//            }
-//        }
-//        catch(SQLException e) {
-//            throw new IOException(e);
-//        }
-//        return null;
-//    }
-//
-//    Integer findSRID(GridCoverage2D raster) throws Exception {
-//        return CRS.lookupEpsgCode(raster.getCoordinateReferenceSystem(), true);
-//    }
-//
-//    ReferencedEnvelope findBounds(GridCoverage2D raster) {
-//        Envelope e = raster.getEnvelope();
-//        return new ReferencedEnvelope(e.getMinimum(0), e.getMaximum(0), e.getMinimum(1), 
-//            e.getMaximum(1), raster.getCoordinateReferenceSystem());
-//    }
-//
-//    GeneralEnvelope toGeneralEnvelope(ReferencedEnvelope e) {
-//        GeneralEnvelope ge = new GeneralEnvelope(new double[]{e.getMinX(), e.getMinY()}, 
-//            new double[]{e.getMaxX(), e.getMaxY()});
-//        ge.setCoordinateReferenceSystem(e.getCoordinateReferenceSystem());
-//        return ge;
-//    }
-//
-//    RasterEntry createRasterEntry(ResultSet rs) throws SQLException, IOException {
-//        RasterEntry e = new RasterEntry();
-//        initEntry(e, rs);
-//
-//        e.setRasterColumn(rs.getString("r_raster_column"));
-//        e.setCompressionQualityFactor(rs.getDouble("compr_qual_factor"));
-//        e.setGeoRectification(Rectification.valueOf(rs.getInt("georectification")));
-//        return e;
-//    }
-//
-//    void addRasterColumnsEntry(RasterEntry e) throws IOException {
-//        String sql = format(
-//                "INSERT INTO %s VALUES (?, ?, ?, ?, ?);", RASTER_COLUMNS);
-//
-//        try {
-//            Connection cx = connPool.getConnection();
-//            try {
-//                PreparedStatement ps = prepare(cx, sql)
-//                    .set(e.getTableName())
-//                    .set(e.getRasterColumn())
-//                    .set(e.getCompressionQualityFactor())
-//                    .set(e.getGeoRectification().value())
-//                    .set(e.getSrid())
-//                    .log(Level.FINE)
-//                    .statement();
-//                ps.execute();
-//                ps.close();
-//            }
-//            finally {
-//                close(cx);
-//            }
-//        }
-//        catch(SQLException ex) {
-//            throw new IOException(ex);
-//        }
-//    }
-//
-//
-//    //
-//    // tile methods
-//    //
-//
+    /**
+     * Lists all the raster entries in the geopackage. 
+     */
+    public List<RasterEntry> rasters() throws IOException {
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                String sql = format(
+                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
+                 " FROM %s a, %s b" + 
+                " WHERE a.table_name = b.r_table_name" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
+                PreparedStatement ps = cx.prepareStatement(sql);
+                ps.setString(1, DataType.Raster.value());
+
+                ResultSet rs = ps.executeQuery();
+
+                List<RasterEntry> entries = new ArrayList();
+                while(rs.next()) {
+                    entries.add(createRasterEntry(rs));
+                }
+                rs.close();
+                ps.close();
+
+                return entries;
+            }
+            finally {
+                cx.close();
+            }
+        }
+        catch(SQLException e) {
+            throw new IOException(e);
+        }
+    }
+
+    /**
+     * Looks up a raster entry by name.
+     * 
+     * @param name THe name of the raster entry.
+     * @return The entry, or <code>null</code> if no such entry exists.
+     */
+    public RasterEntry raster(String name) throws IOException {
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                String sql = format(
+                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
+                 " FROM %s a, %s b" + 
+                " WHERE a.table_name = ?" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
+                PreparedStatement ps = cx.prepareStatement(sql);
+                ps.setString(1, name);
+                ps.setString(2, DataType.Raster.value());
+
+                ResultSet rs = ps.executeQuery();
+                try {
+                    if (rs.next()) {
+                        return createRasterEntry(rs);
+                    }
+                }
+                finally {
+                    rs.close();
+                    ps.close();
+                }
+            }
+            finally {
+                cx.close();
+            }
+        }
+        catch(SQLException e) {
+            throw new IOException(e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Adds a new raster dataset to the geopackage.
+     *
+     * @param entry Contains metadata about the raster entry.
+     * @param raster The raster dataset.
+     * @param format The format in which to store the raster in the database.
+     * 
+     * @throws IOException Any errors occurring while adding the new feature dataset.
+     */
+    public void add(RasterEntry entry, GridCoverage2D raster, AbstractGridFormat format) 
+        throws IOException {
+
+        RasterEntry e = new RasterEntry();
+        e.init(entry);
+
+        if (e.getTableName() == null) {
+            if (raster.getName() == null) {
+                throw new IllegalArgumentException("No table name specified for raster");
+            }
+            e.setTableName(raster.getName().toString());
+        }
+
+        if (e.getRasterColumn() == null) {
+            e.setRasterColumn("raster");
+        }
+
+        if (e.getSrid() == null) {
+            try {
+                e.setSrid(findSRID(raster));
+            } catch (Exception ex) {
+                throw new IOException(ex);
+            }
+        }
+        if (e.getSrid() == null) {
+            throw new IllegalArgumentException("Entry must have srid");
+        }
+
+        if (e.getBounds() == null) {
+            e.setBounds(findBounds(raster));
+        }
+        if (e.getBounds() == null) {
+            throw new IllegalArgumentException("Entry must have bounds");
+        }
+
+        if (e.getIdentifier() == null) {
+            e.setIdentifier(raster.getName().toString());
+        }
+        if (e.getDescription() == null) {
+            e.setDescription(e.getIdentifier());
+        }
+
+        //TODO: comperession quality and georectification
+        e.setCompressionQualityFactor(1.0);
+        e.setGeoRectification(Rectification.Geo);
+
+        e.setLastChange(new Date());
+
+        //write out raster to temp file
+        File tmpFile = File.createTempFile(e.getTableName(), "raster");
+
+        GridCoverageWriter writer = format.getWriter(tmpFile);
+        writer.write(raster, null);
+        writer.dispose();
+
+        //create the raster table
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                Statement st = cx.createStatement();
+                try {
+                    String sql = format("CREATE TABLE %s (id INTEGER PRIMARY KEY AUTOINCREMENT, %s BLOB NOT NULL)", 
+                        e.getTableName(), e.getRasterColumn());
+                    LOGGER.fine(sql);
+
+                    st.execute(sql);
+                }
+                finally {
+                    close(st);
+                }
+
+                //TODO: ideally we would stream this in
+                BufferedInputStream bin = new BufferedInputStream(new FileInputStream(tmpFile));
+                byte[] blob = IOUtils.toByteArray(bin);
+
+                try {
+                    PreparedStatement ps = prepare(cx, 
+                        format("INSERT INTO %s (%s) VALUES (?)",e.getTableName(), e.getRasterColumn()))
+                    .set(blob).log(Level.FINE).statement();
+                    ps.execute();
+                    ps.close();
+                }
+                finally {
+                    bin.close();
+                }
+            }
+            finally {
+                close(cx);
+            }
+        }
+        catch(SQLException ex) {
+            throw new IOException(ex);
+        }
+
+        tmpFile.delete();
+
+        addGeoPackageContentsEntry(e);
+        addRasterColumnsEntry(e);
+
+        entry.init(e);
+    }
+
+    /**
+     * Returns a reader for the contents of a raster dataset.
+     * 
+     * @param entry The raster entry.
+     * @param format Format of the raster dataset.
+     */
+    public GridCoverageReader reader(RasterEntry entry, AbstractGridFormat format) throws IOException {
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                Statement st = cx.createStatement();
+                try {
+                    ResultSet rs = st.executeQuery(
+                        format("SELECT %s FROM %s;", entry.getRasterColumn(), entry.getTableName()));
+                    if (rs.next()) {
+                        byte[] blob = rs.getBytes(1);
+                        Hints hints = new Hints();
+                        //if (format instanceof WorldImageFormat) {
+                        //    TODO: get this patch submitted
+                        //    hints.put(WorldImageFormat.ORIGINAL_ENVELOPE, toGeneralEnvelope(entry.getBounds()));
+                        //}
+                        return format.getReader(blob, hints);
+                    }
+                }
+                finally {
+                    close(st);
+                }
+            }
+            finally {
+                close(cx);
+            }
+        }
+        catch(SQLException e) {
+            throw new IOException(e);
+        }
+        return null;
+    }
+
+    Integer findSRID(GridCoverage2D raster) throws Exception {
+        return CRS.lookupEpsgCode(raster.getCoordinateReferenceSystem(), true);
+    }
+
+    ReferencedEnvelope findBounds(GridCoverage2D raster) {
+        org.opengis.geometry.Envelope e = raster.getEnvelope();
+        return new ReferencedEnvelope(e.getMinimum(0), e.getMaximum(0), e.getMinimum(1), 
+            e.getMaximum(1), raster.getCoordinateReferenceSystem());
+    }
+
+    GeneralEnvelope toGeneralEnvelope(ReferencedEnvelope e) {
+        GeneralEnvelope ge = new GeneralEnvelope(new double[]{e.getMinX(), e.getMinY()}, 
+            new double[]{e.getMaxX(), e.getMaxY()});
+        ge.setCoordinateReferenceSystem(e.getCoordinateReferenceSystem());
+        return ge;
+    }
+
+    RasterEntry createRasterEntry(ResultSet rs) throws SQLException, IOException {
+        RasterEntry e = new RasterEntry();
+        initEntry(e, rs);
+
+        e.setRasterColumn(rs.getString("r_raster_column"));
+        e.setCompressionQualityFactor(rs.getDouble("compr_qual_factor"));
+        e.setGeoRectification(Rectification.valueOf(rs.getInt("georectification")));
+        return e;
+    }
+
+    void addRasterColumnsEntry(RasterEntry e) throws IOException {
+        String sql = format(
+                "INSERT INTO %s VALUES (?, ?, ?, ?, ?);", RASTER_COLUMNS);
+
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                PreparedStatement ps = prepare(cx, sql)
+                    .set(e.getTableName())
+                    .set(e.getRasterColumn())
+                    .set(e.getCompressionQualityFactor())
+                    .set(e.getGeoRectification().value())
+                    .set(e.getSrid())
+                    .log(Level.FINE)
+                    .statement();
+                ps.execute();
+                ps.close();
+            }
+            finally {
+                close(cx);
+            }
+        }
+        catch(SQLException ex) {
+            throw new IOException(ex);
+        }
+    }
+
+
+    //
+    // tile methods
+    //
+
     /**
      * Lists all the tile entries in the geopackage. 
      */
