@@ -1,4 +1,4 @@
-package org.geotools.geopkg.data;
+package org.geotools.geopkg;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,7 +44,7 @@ public class GeoPkgDataStoreFactory extends JDBCDataStoreFactory {
 
     @Override
     protected String getValidationQuery() {
-        return "SELECT now()";
+        return "SELECT 1";
     }
 
     @Override
@@ -83,6 +83,11 @@ public class GeoPkgDataStoreFactory extends JDBCDataStoreFactory {
         // url
         dataSource.setUrl(getJDBCUrl(params));
         
+        //dataSource.setMaxActive(1);
+        //dataSource.setMinIdle(1);
+
+        //dataSource.setTestOnBorrow(true);
+        //dataSource.setValidationQuery(getValidationQuery());
         addConnectionProperties(dataSource);
         
         return dataSource;

@@ -14,15 +14,15 @@ class Flags {
     }
 
     void setVersion(byte ver) {
-        b |= (ver & 0xf0);
+        b |= ((ver << 4) & 0xf0);
     }
 
     EnvelopeType getEnvelopeIndicator() {
-        return EnvelopeType.valueOf((byte) (b & 0x0e));
+        return EnvelopeType.valueOf((byte) ((b & 0x0e) >> 1));
     }
 
     void setEnvelopeIndicator(EnvelopeType e) {
-        b |= (e.value & 0x0e);
+        b |= ((e.value << 1) & 0x0e);
     }
 
     int getEndianess() {

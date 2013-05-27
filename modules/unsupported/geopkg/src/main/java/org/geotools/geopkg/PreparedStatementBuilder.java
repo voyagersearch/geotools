@@ -3,6 +3,7 @@ package org.geotools.geopkg;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.Date;
 import java.util.logging.Level;
 
@@ -45,13 +46,25 @@ public class PreparedStatementBuilder {
 
     public PreparedStatementBuilder set(Integer i) throws SQLException {
         log(i);
-        ps.setInt(pos++, i);
+        if (i != null) {
+            ps.setInt(pos++, i);
+        }
+        else {
+            ps.setNull(pos++, Types.INTEGER);
+        }
+        
         return this;
     }
 
     public PreparedStatementBuilder set(Double d) throws SQLException {
         log(d);
-        ps.setDouble(pos++, d);
+        if (d != null) {
+            ps.setDouble(pos++, d);
+        }
+        else {
+            ps.setNull(pos++, Types.DOUBLE);
+        }
+        
         return this;
     }
 

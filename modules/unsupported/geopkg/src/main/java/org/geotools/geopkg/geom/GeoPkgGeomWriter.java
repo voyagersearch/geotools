@@ -6,6 +6,7 @@ import java.io.OutputStream;
 
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.Point;
 import com.vividsolutions.jts.io.ByteOrderValues;
 import com.vividsolutions.jts.io.OutStream;
 import com.vividsolutions.jts.io.OutputStreamOutStream;
@@ -32,7 +33,7 @@ public class GeoPkgGeomWriter {
         Flags flags = new Flags((byte)0);
         flags.setVersion((byte)0);
         flags.setEndianess(ByteOrderValues.BIG_ENDIAN);
-        flags.setEnvelopeIndicator(EnvelopeType.XY);
+        flags.setEnvelopeIndicator(g instanceof Point ? EnvelopeType.NONE : EnvelopeType.XY);
 
         Header h = new Header();
         h.setFlags(flags);
@@ -42,7 +43,7 @@ public class GeoPkgGeomWriter {
         //write out magic + flags + srid + envelope
         byte[] buf = new byte[8];
         //byte[] buf = new byte[4 + 4 + flags.getEnvelopeIndicator().length];
-        buf[0] = 0x42;
+        buf[0] = 0x47;
         buf[1] = 0x50;
         buf[2] = 0x42;
         buf[3] = flags.toByte();
@@ -52,18 +53,20 @@ public class GeoPkgGeomWriter {
         ByteOrderValues.putInt(g.getSRID(), buf, order);
         out.write(buf, 4);
 
-        Envelope env = g.getEnvelopeInternal();
-        ByteOrderValues.putDouble(env.getMinX(), buf, order);
-        out.write(buf, 8);
-
-        ByteOrderValues.putDouble(env.getMaxX(), buf, order);
-        out.write(buf, 8);
-
-        ByteOrderValues.putDouble(env.getMinY(), buf, order);
-        out.write(buf, 8);
-        
-        ByteOrderValues.putDouble(env.getMaxY(), buf, order);
-        out.write(buf, 8);
+        if (flags.getEnvelopeIndicator() != EnvelopeType.NONE) {
+            Envelope env = g.getEnvelopeInternal();
+            ByteOrderValues.putDouble(env.getMinX(), buf, order);
+            out.write(buf, 8);
+    
+            ByteOrderValues.putDouble(env.getMaxX(), buf, order);
+            out.write(buf, 8);
+    
+            ByteOrderValues.putDouble(env.getMinY(), buf, order);
+            out.write(buf, 8);
+            
+            ByteOrderValues.putDouble(env.getMaxY(), buf, order);
+            out.write(buf, 8);
+        }
         
         //out.write(buf, buf.length);
 

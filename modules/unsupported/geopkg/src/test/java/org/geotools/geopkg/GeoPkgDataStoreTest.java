@@ -1,4 +1,4 @@
-package org.geotools.geopkg.data;
+package org.geotools.geopkg;
 
 import org.geotools.jdbc.JDBCDataStoreTest;
 

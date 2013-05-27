@@ -9,4 +9,4 @@ CREATE TABLE IF NOT EXISTS geopackage_contents (
   max_x DOUBLE NOT NULL DEFAULT 180.0,
   max_y DOUBLE NOT NULL DEFAULT 90.0,
   srid INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT fk_gc_r_srid FOREIGN KEY (srid) REFERENCES spatial_ref_sys(srid))
+  CONSTRAINT fk_gc_r_srid FOREIGN KEY (srid) REFERENCES spatial_ref_sys(srid));

@@ -1,16 +1,18 @@
-package org.geotools.geopkg.data;
+package org.geotools.geopkg;
 
 import static java.lang.String.format;
 import static org.geotools.geopkg.GeoPackage.*;
 
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -24,7 +26,11 @@ import org.geotools.geopkg.geom.GeoPkgGeomReader;
 import org.geotools.geopkg.geom.GeoPkgGeomWriter;
 import org.geotools.jdbc.JDBCDataStore;
 import org.geotools.jdbc.PreparedStatementSQLDialect;
+import org.geotools.referencing.CRS;
+import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.GeometryDescriptor;
+import org.opengis.referencing.FactoryException;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
@@ -32,8 +38,11 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 
 public class GeoPkgDialect extends PreparedStatementSQLDialect {
 
+    //GeoPackage geopkg;
+
     public GeoPkgDialect(JDBCDataStore dataStore) {
         super(dataStore);
+        //this.geopkg = new GeoPackage(dataStore);
     }
 
     @Override
@@ -43,13 +52,17 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
 
     @Override
     public boolean includeTable(String schemaName, String tableName, Connection cx) throws SQLException {
-        PreparedStatement ps = cx.prepareStatement("SELECT * FROM geopackage_contents WHERE" +
-            " table_name = ? AND data_type = ?");
+        Statement st = cx.createStatement();
+        
+        //PreparedStatement ps = cx.prepareStatement("SELECT * FROM geopackage_contents WHERE" +
+        //    " table_name = ? AND data_type = ?");
         try {
-            ps.setString(1, tableName);
-            ps.setString(2, DataType.Feature.value());
+            ResultSet rs = st.executeQuery(String.format("SELECT * FROM geopackage_contents WHERE" +
+                " table_name = '%s' AND data_type = '%s'", tableName, DataType.Feature.value()));
+            //ps.setString(1, tableName);
+            //ps.setString(2, DataType.Feature.value());
 
-            ResultSet rs = ps.executeQuery();
+            //ResultSet rs = ps.executeQuery();
             try {
                 return rs.next();
             }
@@ -58,7 +71,8 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
             }
         }
         finally {
-            dataStore.closeSafe(ps);
+            //dataStore.closeSafe(ps);
+            dataStore.closeSafe(st);
         }
     }
 
@@ -133,7 +147,7 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
             String col = columns.getString("COLUMN_NAME"); 
 
             String sql = format(
-                "SELECT b.geometry_type" +
+                "SELECT b.type" +
                  " FROM %s a, %s b" + 
                 " WHERE a.table_name = b.f_table_name" +
                   " AND b.f_table_name = ?" + 
@@ -165,5 +179,57 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
         }
         
         return null;
+    }
+
+    @Override
+    public void postCreateTable(String schemaName, SimpleFeatureType featureType, Connection cx) 
+        throws SQLException, IOException {
+     
+        FeatureEntry fe = new FeatureEntry();
+        fe.setIdentifier(featureType.getTypeName());
+        fe.setDescription(featureType.getTypeName());
+        fe.setTableName(featureType.getTypeName());
+        fe.setLastChange(new Date());
+        
+        GeometryDescriptor gd = featureType.getGeometryDescriptor(); 
+        if (gd != null) {
+            fe.setGeometryColumn(gd.getLocalName());
+            fe.setGeometryType(Geometries.getForBinding((Class) gd.getType().getBinding()));
+        }
+
+        fe.setCoordDimension(2);
+        CoordinateReferenceSystem crs = featureType.getCoordinateReferenceSystem(); 
+        if (crs != null) {
+            Integer epsgCode = null;
+            try {
+                epsgCode = CRS.lookupEpsgCode(crs, true);
+            } catch (FactoryException e) {
+                LOGGER.log(Level.WARNING, "Error looking up epsg code for " + crs, e);
+            }
+            if (epsgCode != null) {
+                fe.setSrid(epsgCode);
+            }
+        }
+
+        GeoPackage geopkg = geopkg();
+        try {
+            geopkg.addGeoPackageContentsEntry(fe);
+            geopkg.addGeometryColumnsEntry(fe);
+        } catch (IOException e) {
+            throw new SQLException(e);
+        }
+    }
+
+    public Integer getGeometrySRID(String schemaName, String tableName, String columnName, Connection cx) throws SQLException {
+        try {
+            FeatureEntry fe = geopkg().feature(tableName);
+            return fe != null ? fe.getSrid() : null;
+        } catch (IOException e) {
+            throw new SQLException(e);
+        }
+    }
+    
+    GeoPackage geopkg() {
+        return new GeoPackage(dataStore);
     }
 }

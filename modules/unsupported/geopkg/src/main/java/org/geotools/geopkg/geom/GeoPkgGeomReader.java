@@ -83,24 +83,26 @@ public class GeoPkgGeomReader {
         h.srid = din.readInt();
 
         // read the envlope
-        double x1 = din.readDouble();
-        double x2 = din.readDouble();
-        double y1 = din.readDouble();
-        double y2 = din.readDouble();
-
-        if (h.flags.getEnvelopeIndicator().value > 1) {
-            // 2 = minz,maxz; 3 = minm,maxm - we ignore these for now 
-            din.readDouble();
-            din.readDouble();
+        if (h.flags.getEnvelopeIndicator() != EnvelopeType.NONE) {
+            double x1 = din.readDouble();
+            double x2 = din.readDouble();
+            double y1 = din.readDouble();
+            double y2 = din.readDouble();
+    
+            if (h.flags.getEnvelopeIndicator().value > 1) {
+                // 2 = minz,maxz; 3 = minm,maxm - we ignore these for now 
+                din.readDouble();
+                din.readDouble();
+            }
+    
+            if (h.flags.getEnvelopeIndicator().value > 3) {
+                // 4 = minz,maxz,minm,maxm - we ignore these for now
+                din.readDouble();
+                din.readDouble();
+            }
+    
+            h.envelope = new Envelope(x1, x2, y1, y2);
         }
-
-        if (h.flags.getEnvelopeIndicator().value > 3) {
-            // 4 = minz,maxz,minm,maxm - we ignore these for now
-            din.readDouble();
-            din.readDouble();
-        }
-
-        h.envelope = new Envelope(x1, x2, y1, y2);
         return h;
     }
     
