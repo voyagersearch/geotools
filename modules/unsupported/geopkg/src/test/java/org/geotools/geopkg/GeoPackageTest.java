@@ -261,7 +261,7 @@ public class GeoPackageTest {
             assertTrue(rs.next());
 
             assertEquals(entry.getGeometryColumn(), rs.getString("f_geometry_column"));
-            assertEquals(entry.getGeometryType(), Geometries.getForName(rs.getString("type")));
+            assertEquals(entry.getGeometryType(), Geometries.getForName(rs.getString("geometry_type")));
             assertEquals(entry.getSrid().intValue(), rs.getInt("srid"));
             assertEquals(entry.getCoordDimension().intValue(), rs.getInt("coord_dimension"));
 

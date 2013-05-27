@@ -147,7 +147,7 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
             String col = columns.getString("COLUMN_NAME"); 
 
             String sql = format(
-                "SELECT b.type" +
+                "SELECT b.geometry_type" +
                  " FROM %s a, %s b" + 
                 " WHERE a.table_name = b.f_table_name" +
                   " AND b.f_table_name = ?" + 

@@ -1,7 +1,10 @@
 package org.geotools.geopkg;
 
 import java.io.IOException;
+import java.sql.Connection;
+import java.util.Properties;
 
+import org.apache.commons.dbcp.BasicDataSource;
 import org.geotools.geometry.jts.GeometryBuilder;
 
 import org.geotools.geopkg.geom.GeoPkgGeomWriter;
@@ -19,9 +22,12 @@ public class GeoPkgTestSetup extends JDBCTestSetup {
     }
 
     @Override
-    protected void initializeDatabase() throws Exception {
-        super.initializeDatabase();
-        //new GeoPackage(getDataSource()).init();
+    protected void initializeDataSource(BasicDataSource ds, Properties db) {
+        super.initializeDataSource(ds, db);
+        GeoPkgDataStoreFactory.addConnectionProperties(ds);
+        //GeoPkgDataStoreFactory.initializeDataSource(ds);
+        
+        ds.setDefaultTransactionIsolation(Connection.TRANSACTION_READ_UNCOMMITTED);
     }
 
     @Override

@@ -307,7 +307,7 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.f_geometry_column, b.type, b.coord_dimension" +
+                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension" +
                  " FROM %s a, %s b" + 
                 " WHERE a.table_name = b.f_table_name" + 
                   " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS);
@@ -345,7 +345,7 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.f_geometry_column, b.type, b.coord_dimension" +
+                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension" +
                  " FROM %s a, %s b" + 
                 " WHERE a.table_name = ?" + 
                   " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS);
@@ -473,9 +473,6 @@ public class GeoPackage {
 
         create(e, source.getSchema());
 
-        Transaction tx = new DefaultTransaction();
-        SimpleFeatureWriter w = writer(e, true, null, tx);
-
         //copy over features
         //TODO: make this more robust, won't handle case issues going between datasources, etc...
         //TODO: for big datasets we need to break up the transaction
@@ -483,6 +480,8 @@ public class GeoPackage {
             filter = Filter.INCLUDE;
         }
 
+        Transaction tx = new DefaultTransaction();
+        SimpleFeatureWriter w = writer(e, true, null, tx);
         SimpleFeatureIterator it = source.getFeatures(filter).features();
         try {
             while(it.hasNext()) {
@@ -502,6 +501,7 @@ public class GeoPackage {
             throw new IOException(ex);
         }
         finally {
+            w.close();
             it.close();
             tx.close();
         }
@@ -582,7 +582,7 @@ public class GeoPackage {
         initEntry(e, rs);
 
         e.setGeometryColumn(rs.getString("f_geometry_column"));
-        e.setGeometryType(Geometries.getForName(rs.getString("type")));
+        e.setGeometryType(Geometries.getForName(rs.getString("geometry_type")));
         e.setCoordDimension(rs.getInt("coord_dimension"));
 
         return e;

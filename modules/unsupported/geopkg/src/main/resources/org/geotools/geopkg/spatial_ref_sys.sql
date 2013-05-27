@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS spatial_ref_sys (
-  srid INTEGER NOT NULL PRIMARY KEY,
+  srid INTEGER PRIMARY KEY,
   auth_name TEXT NOT NULL,
   auth_srid INTEGER NOT NULL,
   srtext TEXT NOT NULL);

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS tile_matrix_metadata (
-  t_table_name TEXT NOT NULL,
-  zoom_level INTEGER NOT NULL,
+  t_table_name TEXT,
+  zoom_level INTEGER,
   matrix_width INTEGER NOT NULL,
   matrix_height INTEGER NOT NULL,
   tile_width INTEGER NOT NULL,
