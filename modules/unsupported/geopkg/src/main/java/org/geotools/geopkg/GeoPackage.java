@@ -90,6 +90,10 @@ public class GeoPackage {
     
     public static final String TILE_MATRIX_METADATA = "tile_matrix_metadata";
 
+    public static final String METADATA = "metadata";
+    
+    public static final String METADATA_REFERENCE = "metadata_reference";
+    
     public static enum DataType {
         Feature("features"), Raster("rasters"), Tile("tiles"), 
         FeatureWithRaster("featuresWithRasters");
@@ -223,6 +227,8 @@ public class GeoPackage {
         runScript(TILE_TABLE_METADATA +".sql", cx);
         runScript(TILE_MATRIX_METADATA + ".sql", cx);
         runScript(RASTER_COLUMNS + ".sql", cx);
+        runScript(METADATA + ".sql", cx);
+        runScript(METADATA_REFERENCE + ".sql", cx);
 
         Statement st = cx.createStatement();
         ResultSet rs = st.executeQuery("SELECT count(*) FROM " + SPATIAL_REF_SYS);
