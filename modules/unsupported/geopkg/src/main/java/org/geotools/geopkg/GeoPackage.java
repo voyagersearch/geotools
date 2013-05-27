@@ -313,10 +313,11 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension" +
-                 " FROM %s a, %s b" + 
+                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" + 
                 " WHERE a.table_name = b.f_table_name" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS);
+                  " AND a.srid = c.srid" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS, SPATIAL_REF_SYS);
                 PreparedStatement ps = cx.prepareStatement(sql);
                 ps.setString(1, DataType.Feature.value());
 
@@ -351,10 +352,13 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension" +
-                 " FROM %s a, %s b" + 
-                " WHERE a.table_name = ?" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS);
+                "SELECT a.*, b.f_geometry_column, b.geometry_type, b.coord_dimension, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" + 
+                " WHERE a.table_name = b.f_table_name " + 
+                  " AND a.srid = c.srid " +
+                  " AND a.table_name = ?" +
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, GEOMETRY_COLUMNS, SPATIAL_REF_SYS);
+
                 PreparedStatement ps = cx.prepareStatement(sql);
                 ps.setString(1, name);
                 ps.setString(2, DataType.Feature.value());
@@ -703,10 +707,11 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
-                 " FROM %s a, %s b" + 
-                " WHERE a.table_name = b.r_table_name" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
+                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" + 
+                " WHERE a.table_name = b.r_table_name" +
+                  " AND a.srid = c.srid " + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS, SPATIAL_REF_SYS);
                 PreparedStatement ps = cx.prepareStatement(sql);
                 ps.setString(1, DataType.Raster.value());
 
@@ -741,10 +746,12 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification" +
-                 " FROM %s a, %s b" + 
-                " WHERE a.table_name = ?" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS);
+                "SELECT a.*, b.r_raster_column, b.compr_qual_factor, b.georectification, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" + 
+                " WHERE a.table_name = b.r_table_name" +
+                  " AND a.srid = c.srid" + 
+                  " AND a.table_name = ?" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, RASTER_COLUMNS, SPATIAL_REF_SYS);
                 PreparedStatement ps = cx.prepareStatement(sql);
                 ps.setString(1, name);
                 ps.setString(2, DataType.Raster.value());
@@ -987,10 +994,11 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.is_times_two_zoom" +
-                 " FROM %s a, %s b" + 
-                " WHERE a.table_name = b.t_table_name" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, TILE_TABLE_METADATA);
+                "SELECT a.*, b.is_times_two_zoom, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" + 
+                " WHERE a.table_name = b.t_table_name" +
+                  " AND a.srid = c.srid" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, TILE_TABLE_METADATA, SPATIAL_REF_SYS);
                 LOGGER.fine(sql);
 
                 PreparedStatement ps = cx.prepareStatement(sql);
@@ -1027,10 +1035,12 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 String sql = format(
-                "SELECT a.*, b.is_times_two_zoom" +
-                 " FROM %s a, %s b" + 
-                " WHERE a.table_name = ?" + 
-                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, TILE_TABLE_METADATA);
+                "SELECT a.*, b.is_times_two_zoom, c.auth_srid, c.srtext" +
+                 " FROM %s a, %s b, %s c" +
+                " WHERE a.table_name = b.t_table_name" + 
+                  " AND a.srid = c.srid" + 
+                  " AND a.table_name = ?" + 
+                  " AND a.data_type = ?", GEOPACKAGE_CONTENTS, TILE_TABLE_METADATA, SPATIAL_REF_SYS);
                 LOGGER.fine(sql);
 
                 PreparedStatement ps = cx.prepareStatement(sql);
@@ -1264,7 +1274,7 @@ public class GeoPackage {
             throw new IOException(ex);
         }
 
-        int srid = rs.getInt("srid"); 
+        int srid = rs.getInt("auth_srid"); 
         e.setSrid(srid);
 
         CoordinateReferenceSystem crs;
@@ -1272,7 +1282,13 @@ public class GeoPackage {
             crs = CRS.decode("EPSG:" + srid);
         } 
         catch(Exception ex) {
-            throw new IOException(ex);
+            //try parsing srtext directly
+            try {
+                crs = CRS.parseWKT(rs.getString("srtext"));
+            }
+            catch(Exception e2) {
+                throw new IOException(ex);
+            }
         }
 
         e.setBounds(new ReferencedEnvelope(rs.getDouble("min_x"), 

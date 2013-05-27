@@ -30,6 +30,7 @@ import org.geotools.referencing.CRS;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.GeometryDescriptor;
 import org.opengis.referencing.FactoryException;
+import org.opengis.referencing.NoSuchAuthorityCodeException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -231,7 +232,40 @@ public class GeoPkgDialect extends PreparedStatementSQLDialect {
             throw new SQLException(e);
         }
     }
-    
+
+    public CoordinateReferenceSystem createCRS(int srid, Connection cx) throws SQLException {
+        try {
+            return CRS.decode("EPSG:" + srid);
+        }
+        catch (Exception e) {
+            LOGGER.log(Level.FINE, "Unable to create CRS from epsg code " + srid, e);
+            
+            //try looking up in spatial ref sys
+            String sql = 
+                String.format("SELECT srtext FROM %s WHERE auth_srid = %d", SPATIAL_REF_SYS, srid);
+            LOGGER.fine(sql);
+
+            Statement st = cx.createStatement();
+            ResultSet rs = st.executeQuery(sql);
+            try {
+                if (rs.next()){
+                    String wkt = rs.getString(1);
+                    try {
+                        return CRS.parseWKT(wkt);
+                    } catch (Exception e2) {
+                        LOGGER.log(Level.FINE, "Unable to create CRS from wkt: " + wkt, e2);
+                    }
+                }
+            }
+            finally {
+                dataStore.closeSafe(rs);
+                dataStore.closeSafe(st);
+            }
+        }
+
+        return super.createCRS(srid, cx);
+    }
+
     GeoPackage geopkg() {
         return new GeoPackage(dataStore);
     }
