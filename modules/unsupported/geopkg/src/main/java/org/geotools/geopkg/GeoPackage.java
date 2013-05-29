@@ -55,6 +55,8 @@ import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.GeometryDescriptor;
 import org.opengis.feature.type.PropertyDescriptor;
 import org.opengis.filter.Filter;
+import org.opengis.referencing.FactoryException;
+import org.opengis.referencing.NoSuchAuthorityCodeException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -229,20 +231,6 @@ public class GeoPackage {
         runScript(RASTER_COLUMNS + ".sql", cx);
         runScript(METADATA + ".sql", cx);
         runScript(METADATA_REFERENCE + ".sql", cx);
-
-        Statement st = cx.createStatement();
-        ResultSet rs = st.executeQuery("SELECT count(*) FROM " + SPATIAL_REF_SYS);
-        rs.next();
-
-        int count = rs.getInt(1);
-        if (count == 0) {
-            runScript(SPATIAL_REF_SYS + "_contents.sql", cx);
-        }
-
-        rs.close();
-        st.close();
-        
-            
     }
 
     /**
@@ -267,6 +255,73 @@ public class GeoPackage {
 
         } catch (SQLException e) {
             LOGGER.log(Level.WARNING, "Error closing database connection", e);
+        }
+    }
+
+    /**
+     * Adds an epsg crs to the geopackage, registering it in the spatial_ref_sys table.
+     * <p>
+     * This method will look up the <tt>srid</tt> in the local epsg database. Use 
+     * {@link #addCRS(CoordinateReferenceSystem, int)} to specify an explicit CRS, authority, code
+     * entry. 
+     * </p>
+     */
+    public void addCRS(int srid) throws IOException {
+        try {
+            addCRS(CRS.decode("EPSG:" + srid), "epsg", srid);
+        } 
+        catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+    /**
+     * Adds a crs to the geopackage, registring it in the spatial_ref_sys table.
+     *  
+     * @param crs The crs to add.
+     * @param auth The authority code, example: epsg
+     * @param srid The spatial reference system id.
+     * 
+     */
+    public void addCRS(CoordinateReferenceSystem crs, String auth, int srid) throws IOException {
+        try {
+            Connection cx = connPool.getConnection();
+            try {
+                PreparedStatement ps = cx.prepareStatement(String.format(
+                    "SELECT srid FROM %s WHERE srid = ? AND auth = ?", SPATIAL_REF_SYS));
+                try {
+                    ResultSet rs = prepare(ps).set(srid).set(auth).log(Level.FINE)
+                        .statement().executeQuery();
+                    if (rs.next()) {
+                        return;
+                    }
+                }
+                finally {
+                    ps.close();
+                }
+                
+                ps = cx.prepareStatement(String.format(
+                    "INSERT INTO %s (srid, auth_name, auth_srid, srtext) VALUES (?,?,?,?)", 
+                    SPATIAL_REF_SYS)); 
+                try {
+                    prepare(ps)
+                        .set(srid)
+                        .set(auth)
+                        .set(srid)
+                        .set(crs.toWKT())
+                        .log(Level.FINE).statement().execute();
+                    ps.close();
+                }
+                finally {
+                    ps.close();
+                }
+            }
+            finally {
+                cx.close();
+            }
+        }
+        catch(SQLException e) {
+            throw new IOException(e);
         }
     }
 
@@ -599,6 +654,8 @@ public class GeoPackage {
     }
 
     void addGeoPackageContentsEntry(Entry e) throws IOException {
+        addCRS(e.getSrid());
+
         StringBuilder sb = new StringBuilder();
         StringBuilder vals = new StringBuilder();
         
@@ -1104,6 +1161,7 @@ public class GeoPackage {
         }
 
         e.setLastChange(new Date());
+
         try {
             Connection cx = connPool.getConnection();
             //TODO: do all of this in a transaction
@@ -1323,41 +1381,40 @@ public class GeoPackage {
             }
         }
 
-        StringBuilder buf = new StringBuilder();
-        for (String sql : lines) {
-            sql = sql.trim();
-            if (sql.isEmpty()) {
-                continue;
-            }
-            if (sql.startsWith("--")) {
-                continue;
-            }
-            buf.append(sql).append(" ");
-
-            if (sql.endsWith(";")) {
-                String stmt = buf.toString();
-                boolean skipError = stmt.startsWith("?");
-                if (skipError) {
-                    stmt = stmt.replaceAll("^\\? *" ,"");
+        Statement st = cx.createStatement();
+        
+        try {
+            StringBuilder buf = new StringBuilder();
+            for (String sql : lines) {
+                sql = sql.trim();
+                if (sql.isEmpty()) {
+                    continue;
                 }
-
-                LOGGER.fine(stmt);
-
-                Statement st = cx.createStatement();
-
-                try {
-                    st.execute(stmt);
+                if (sql.startsWith("--")) {
+                    continue;
                 }
-                catch(SQLException e) {
-                    if (!skipError) {
-                        throw e;
+                buf.append(sql).append(" ");
+    
+                if (sql.endsWith(";")) {
+                    String stmt = buf.toString();
+                    boolean skipError = stmt.startsWith("?");
+                    if (skipError) {
+                        stmt = stmt.replaceAll("^\\? *" ,"");
                     }
-                }
+    
+                    LOGGER.fine(stmt);
+                    st.addBatch(stmt);
 
-                buf.setLength(0);
+                    buf.setLength(0);
+                }
             }
+            st.executeBatch();
+        }
+        finally {
+            close(st);
         }
     }
+    
     void close(Connection cx) {
         if (cx != null) {
             try {
