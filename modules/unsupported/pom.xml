@@ -152,13 +152,11 @@
        </modules>
      </profile>
      <profile>
-       <id>transform</id>
        <activation>
          <property><name>all</name></property>
        </activation>
        <modules>
-         <module>transform</module>
-
+         <module>coverage-experiment</module>
        </modules>
      </profile>
      <profile>
