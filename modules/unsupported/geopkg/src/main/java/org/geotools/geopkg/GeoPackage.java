@@ -288,7 +288,7 @@ public class GeoPackage {
             Connection cx = connPool.getConnection();
             try {
                 PreparedStatement ps = cx.prepareStatement(String.format(
-                    "SELECT srid FROM %s WHERE srid = ? AND auth = ?", SPATIAL_REF_SYS));
+                    "SELECT srid FROM %s WHERE srid = ? AND auth_name = ?", SPATIAL_REF_SYS));
                 try {
                     ResultSet rs = prepare(ps).set(srid).set(auth).log(Level.FINE)
                         .statement().executeQuery();
