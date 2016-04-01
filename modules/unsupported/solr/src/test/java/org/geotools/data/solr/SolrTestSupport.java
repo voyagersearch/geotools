@@ -45,6 +45,8 @@ import com.vividsolutions.jts.geom.Geometry;
 
 public abstract class SolrTestSupport extends OnlineTestCase {
 
+    public static final String FIXTURE_ID = SolrDataStoreFactory.NAMESPACE.sample.toString();
+
     protected static final Logger LOGGER = org.geotools.util.logging.Logging
             .getLogger(SolrTestSupport.class);
 
@@ -177,7 +179,7 @@ public abstract class SolrTestSupport extends OnlineTestCase {
 
     @Override
     protected String getFixtureId() {
-        return SolrDataStoreFactory.NAMESPACE.sample.toString();
+        return FIXTURE_ID;
     }
 
     protected Date date(String date) throws ParseException {
