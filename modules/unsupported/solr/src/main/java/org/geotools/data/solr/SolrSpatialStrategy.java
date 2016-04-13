@@ -70,6 +70,11 @@ public abstract class SolrSpatialStrategy {
         @Override
         public String encode(Geometry geometry) {
             Envelope env = geometry.getEnvelopeInternal();
+
+            // JD: as of Solr 5 there is a new syntax for bbox. 
+            // TODO: add a version check to the datastore used to enable which format to use 
+            //return String.format(Locale.ENGLISH, "%f %f %f %f", env.getMinX(), env.getMinY(), 
+            //    env.getMaxX(), env.getMaxY());
             return String.format(Locale.ENGLISH, "ENVELOPE(%f,%f,%f,%f)", env.getMinX(),
                     env.getMaxX(), env.getMaxY(), env.getMinY());
         }
