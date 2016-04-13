@@ -104,13 +104,14 @@ public class SolrDataStore extends ContentDataStore {
      * @param layerMapper The document loader.
      */
     public SolrDataStore(URL url, SolrLayerMapper layerMapper) {
+        // TODO: make connection timeouts configurable
         this.url = url;
         this.layerMapper = layerMapper;
         this.solrServer = new HttpSolrClient(url.toString());
         this.solrServer.setAllowCompression(true);
         this.solrServer.setConnectionTimeout(10000);
         this.solrServer.setFollowRedirects(true);
-        this.solrServer.setSoTimeout(60000);
+        this.solrServer.setSoTimeout(10000);
     }
 
     /**
