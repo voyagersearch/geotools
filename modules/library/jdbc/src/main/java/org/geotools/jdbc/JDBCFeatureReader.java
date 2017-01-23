@@ -132,6 +132,8 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
      */
     protected int offset = 0;
     
+    protected JDBCReaderCallback callback = JDBCReaderCallback.NULL;
+
     public JDBCFeatureReader( String sql, Connection cx, JDBCFeatureSource featureSource, SimpleFeatureType featureType, Hints hints ) 
         throws SQLException {
         init( featureSource, featureType, hints );
@@ -142,18 +144,7 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
         st.setFetchSize(featureSource.getDataStore().getFetchSize());
         
         ((BasicSQLDialect)featureSource.getDataStore().getSQLDialect()).onSelect(st, cx, featureType);
-        try {
-            rs = st.executeQuery(sql);
-        } catch (Exception e1) {
-            LOGGER.log(Level.SEVERE, "Failed to execute statement " + sql);
-            // make sure to mark as closed, otherwise we are going to log that it was not
-            try {
-                close();
-            } catch (IOException e2) {
-                LOGGER.log(Level.FINE, "Failed to close the reader, moving on", e2);
-            }
-            throw new SQLException(e1);
-        }
+        runQuery(() -> st.executeQuery(sql));
     }
     
     public JDBCFeatureReader( PreparedStatement st, Connection cx, JDBCFeatureSource featureSource, SimpleFeatureType featureType, Hints hints ) 
@@ -166,17 +157,7 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
         this.st = st;
         
         ((PreparedStatementSQLDialect)featureSource.getDataStore().getSQLDialect()).onSelect(st, cx, featureType);
-        try {
-            rs = st.executeQuery();
-        } catch (Exception e1) {
-            // make sure to mark as closed, otherwise we are going to log that it was not
-            try {
-                close();
-            } catch (IOException e2) {
-                LOGGER.log(Level.FINE, "Failed to close the reader, moving on", e2);
-            }
-            throw new SQLException(e1);
-        }
+        runQuery(st::executeQuery);
     }
     
     public JDBCFeatureReader(ResultSet rs, Connection cx, int offset, JDBCFeatureSource featureSource, 
@@ -188,6 +169,7 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
         this.rs = rs;
         this.offset = offset;
     }
+
     protected void init( JDBCFeatureSource featureSource, SimpleFeatureType featureType, Hints hints ) {
         // init the tracer if we need to debug a connection leak
         if(TRACE_ENABLED) {
@@ -238,6 +220,31 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
             throw new RuntimeException(e);
         }
 
+        callback = dataStore.getCallbackFactory().createReaderCallback();
+        callback.init();
+    }
+
+    @FunctionalInterface
+    interface QueryRunner {
+        ResultSet run() throws Exception;
+    }
+
+    void runQuery(QueryRunner runner) throws SQLException {
+        callback.beforeQuery();
+        try {
+            rs = runner.run();
+            callback.afterQuery();
+        } catch (Exception e1) {
+            callback.queryError(e1);
+
+            // make sure to mark as closed, otherwise we are going to log that it was not
+            try {
+                close();
+            } catch (IOException e2) {
+                LOGGER.log(Level.FINE, "Failed to close the reader, moving on", e2);
+            }
+            throw new SQLException(e1);
+        }
     }
 
     public JDBCFeatureReader( JDBCFeatureReader other ) {
@@ -269,8 +276,15 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
         
         if (next == null) {
             try {
+                callback.beforeRow();
                 next = Boolean.valueOf(rs.next());
+                callback.afterRow(next);
+
+                if (!next) {
+                    callback.finish();
+                }
             } catch (SQLException e) {
+                callback.rowError(e);
                 throw new RuntimeException(e);
             }
         }
@@ -429,6 +443,7 @@ public class JDBCFeatureReader implements  FeatureReader<SimpleFeatureType, Simp
         else {
             //means we are already closed... should we throw an exception?
         }
+
         cleanup();
     }
 
