@@ -124,6 +124,8 @@ public class ShapefileDumper {
 
     boolean emptyShapefileAllowed = true;
 
+    Boolean createWithDateTime = null;
+
     Charset charset = (Charset) ShapefileDataStoreFactory.DBFCHARSET.getDefaultValue();
 
     public ShapefileDumper(File targetDirectory) {
@@ -200,6 +202,25 @@ public class ShapefileDumper {
      */
     public void setEmptyShapefileAllowed(boolean emptyShapefileAllowed) {
         this.emptyShapefileAllowed = emptyShapefileAllowed;
+    }
+
+    /**
+     * Sets the flag to create the Shapefile with DateTime / Timestamp columns.
+     *
+     * @param createWithDateTime True to enable, false to disable, null to fallback on system
+     *     property from {@link ShapefileDataStore#lookupDatetimeProperty()}.
+     */
+    public void setCreateWithDateTime(Boolean createWithDateTime) {
+        this.createWithDateTime = createWithDateTime;
+    }
+
+    /**
+     * Whether the Shapefile is created with DateTime / Timestamp columns.
+     *
+     * @see #setCreateWithDateTime(Boolean)
+     */
+    public Boolean getCreateWithDateTime() {
+        return createWithDateTime;
     }
 
     /**
@@ -356,6 +377,10 @@ public class ShapefileDumper {
         // and dump the charset into a .cst file, for debugging and control purposes
         // (.cst is not a standard extension)
         sfds.setCharset(charset);
+
+        // pass through create with datetime flag
+        sfds.setCreateWithDateTime(createWithDateTime);
+
         File charsetFile = new File(targetDirectory, schema.getTypeName() + ".cst");
         PrintWriter pw = null;
         try {
@@ -388,6 +413,7 @@ public class ShapefileDumper {
         // enforce the limits
         sfds.setMaxShpSize(this.maxShpSize);
         sfds.setMaxDbfSize(this.maxDbfSize);
+        sfds.setCreateWithDateTime(this.createWithDateTime);
 
         return sfds;
     }

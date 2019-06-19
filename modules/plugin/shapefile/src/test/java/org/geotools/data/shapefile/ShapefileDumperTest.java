@@ -21,8 +21,10 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
@@ -31,6 +33,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.geotools.data.property.PropertyDataStore;
@@ -53,6 +56,8 @@ import org.opengis.filter.Filter;
 public class ShapefileDumperTest {
 
     static final String BASIC_POLYGONS = "BasicPolygons";
+
+    static final String BASIC_POLYGONS_WITH_TIME = "BasicPolygonsWithTime";
 
     static final String ALL_TYPES = "AllTypes";
 
@@ -300,6 +305,46 @@ public class ShapefileDumperTest {
         testBasicPolygonCollection(1, BASIC_POLYGONS + "2");
     }
 
+    @Test
+    public void testCreateWithDateTime() throws Exception {
+        SimpleFeatureCollection fc = getFeaturesFromProperties(BASIC_POLYGONS_WITH_TIME);
+        ShapefileDumper dumper = new ShapefileDumper(dumperFolder);
+        dumper.setCreateWithDateTime(true);
+        dumper.dump(fc);
+
+        ShapefileDataStore dumped = getStoreFromShapefile(BASIC_POLYGONS_WITH_TIME);
+        try {
+            dumped.setCreateWithDateTime(true);
+            try (SimpleFeatureIterator it = dumped.getFeatureSource().getFeatures().features()) {
+                assertTrue(it.hasNext());
+                Date d = (Date) it.next().getAttribute("TIMESTAMP");
+                assertNotEquals(d.getHours(), 0);
+            }
+        } finally {
+            dumped.dispose();
+        }
+    }
+
+    @Test
+    public void testCreateWithoutDateTime() throws Exception {
+        SimpleFeatureCollection fc = getFeaturesFromProperties(BASIC_POLYGONS_WITH_TIME);
+        ShapefileDumper dumper = new ShapefileDumper(dumperFolder);
+        dumper.setCreateWithDateTime(false);
+        dumper.dump(fc);
+
+        ShapefileDataStore dumped = getStoreFromShapefile(BASIC_POLYGONS_WITH_TIME);
+        try {
+            dumped.setCreateWithDateTime(false);
+            try (SimpleFeatureIterator it = dumped.getFeatureSource().getFeatures().features()) {
+                assertTrue(it.hasNext());
+                Date d = (Date) it.next().getAttribute("TIMESTAMP");
+                assertEquals(d.getHours(), 0);
+            }
+        } finally {
+            dumped.dispose();
+        }
+    }
+
     /**
      * Verifies the contents of the CST file are the expected ones
      *
@@ -323,14 +368,11 @@ public class ShapefileDumperTest {
     }
 
     /**
-     * Returns a collection from the dumper folder given a type name. The support shapefile data
-     * store will be closed automatically by the test machinery during tear down
-     *
-     * @param typeName
-     * @return
-     * @throws IOException
+     * Returns a store from the dumper folder given a type name. It's up to the caller to ensure
+     * that the store is properly disposed. Use {@link #getFeaturesFromShapefile(String)} if you
+     * just want access to the features without a need for the store.
      */
-    private SimpleFeatureCollection getFeaturesFromShapefile(String typeName) throws IOException {
+    private ShapefileDataStore getStoreFromShapefile(String typeName) throws IOException {
         File shp = new File(dumperFolder, typeName + ".shp");
         if (!shp.exists()) {
             fail(
@@ -353,7 +395,19 @@ public class ShapefileDumperTest {
         }
 
         // extract the features
-        ShapefileDataStore ds = new ShapefileDataStore(URLs.fileToUrl(shp));
+        return new ShapefileDataStore(URLs.fileToUrl(shp));
+    }
+
+    /**
+     * Returns a collection from the dumper folder given a type name. The support shapefile data
+     * store will be closed automatically by the test machinery during tear down
+     *
+     * @param typeName
+     * @return
+     * @throws IOException
+     */
+    private SimpleFeatureCollection getFeaturesFromShapefile(String typeName) throws IOException {
+        ShapefileDataStore ds = getStoreFromShapefile(typeName);
         shapefileStores.add(ds);
         return ds.getFeatureSource().getFeatures();
     }

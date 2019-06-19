@@ -117,6 +117,8 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
 
     long maxDbfSize = ShapefileFeatureWriter.DEFAULT_MAX_DBF_SIZE;
 
+    Boolean createWithDateTime;
+
     public ShapefileDataStore(URL url) {
         shpFiles = new ShpFiles(url);
         if (TRACE_ENABLED) {
@@ -232,6 +234,33 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
         this.maxDbfSize = maxDbfSize;
     }
 
+    /**
+     * Sets the flag to create the Shapefile with DateTime / Timestamp columns.
+     *
+     * @param createWithDateTime True to enable, false to disable, null to fallback on system
+     *     property from {@link #lookupDatetimeProperty()}.
+     */
+    void setCreateWithDateTime(Boolean createWithDateTime) {
+        this.createWithDateTime = createWithDateTime;
+    }
+
+    /**
+     * Whether the Shapefile is created with DateTime / Timestamp columns.
+     *
+     * @see #setCreateWithDateTime(Boolean)
+     */
+    Boolean getCreateWithDateTime() {
+        return createWithDateTime;
+    }
+
+    /**
+     * Derived version of {@link #createWithDateTime()} that falls back to {@link
+     * #lookupDatetimeProperty()} when the flag is not set (ie. is null). =
+     */
+    boolean createWithDateTime() {
+        return createWithDateTime != null ? createWithDateTime : lookupDatetimeProperty();
+    }
+
     public SimpleFeatureType getSchema() throws IOException {
         return getSchema(getTypeName());
     }
@@ -297,7 +326,7 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
             assert !shxChannel.isOpen();
         }
 
-        DbaseFileHeader dbfheader = createDbaseHeader(featureType);
+        DbaseFileHeader dbfheader = createDbaseHeader(featureType, createWithDateTime());
 
         dbfheader.setNumRecords(0);
 
@@ -351,6 +380,16 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
      */
     protected static DbaseFileHeader createDbaseHeader(SimpleFeatureType featureType)
             throws IOException, DbaseFileException {
+        return createDbaseHeader(featureType, lookupDatetimeProperty());
+    }
+
+    /**
+     * Attempt to create a DbaseFileHeader for the FeatureType specifying whether to support the use
+     * of DateTime columns. Note, we cannot set the number of records until the write has completed.
+     */
+    protected static DbaseFileHeader createDbaseHeader(
+            SimpleFeatureType featureType, boolean createWithDateTime)
+            throws IOException, DbaseFileException {
 
         DbaseFileHeader header = new DbaseFileHeader();
 
@@ -385,8 +424,7 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
                 // This check has to come before the Date one or it is never reached
                 // also, this field is only activated with the following system property:
                 // org.geotools.shapefile.datetime=true
-            } else if (java.util.Date.class.isAssignableFrom(colType)
-                    && Boolean.getBoolean("org.geotools.shapefile.datetime")) {
+            } else if (java.util.Date.class.isAssignableFrom(colType) && createWithDateTime) {
                 header.addColumn(colName, '@', fieldLen, 0);
             } else if (java.util.Date.class.isAssignableFrom(colType)
                     || Calendar.class.isAssignableFrom(colType)) {
@@ -410,6 +448,15 @@ public class ShapefileDataStore extends ContentDataStore implements FileDataStor
         }
 
         return header;
+    }
+
+    /**
+     * Looks up the value of the "org.geotools.shapefile.datetime" system property.
+     *
+     * @return True if the option is set, otherwise false.
+     */
+    static boolean lookupDatetimeProperty() {
+        return Boolean.getBoolean("org.geotools.shapefile.datetime");
     }
 
     /**

@@ -68,6 +68,7 @@ public class DbaseFileWriter {
     private StreamLogging streamLogger = new StreamLogging("Dbase File Writer");
     private Charset charset;
     private TimeZone timeZone;
+    private boolean createWithDateTime = false;
 
     private boolean reportFieldSizeErrors =
             Boolean.getBoolean("org.geotools.shapefile.reportFieldSizeErrors");
@@ -259,7 +260,7 @@ public class DbaseFileWriter {
                 break;
             case '@':
                 o = formatter.getFieldStringDateTime((Date) obj);
-                if (Boolean.getBoolean("org.geotools.shapefile.datetime")) {
+                if (createWithDateTime) {
                     // Adding the charset to getBytes causes the output to
                     // get altered for the '@: Timestamp' field.
                     // And using String.getBytes returns a different array
@@ -522,6 +523,14 @@ public class DbaseFileWriter {
 
     public void setReportFieldSizeErrors(boolean reportFieldSizeErrors) {
         this.reportFieldSizeErrors = reportFieldSizeErrors;
+    }
+
+    public void setCreateWithDateTime(boolean createWithDateTime) {
+        this.createWithDateTime = createWithDateTime;
+    }
+
+    public boolean getCreateWithDateTime() {
+        return createWithDateTime;
     }
 
     public DbaseFileHeader getHeader() {

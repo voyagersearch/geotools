@@ -64,15 +64,25 @@ class ShapefileFeatureStore extends ContentFeatureStore {
                 (ShapefileFeatureReader) delegate.getReaderInternal(Query.ALL);
         ShapefileFeatureWriter writer;
         ShapefileDataStore ds = getDataStore();
+        boolean createWithDateTime = getDataStore().createWithDateTime();
+
         if (ds.indexManager.hasFidIndex(false)
                 || ds.isFidIndexed() && ds.indexManager.hasFidIndex(true)) {
             writer =
                     new IndexedShapefileFeatureWriter(
-                            ds.indexManager, reader, ds.getCharset(), ds.getTimeZone());
+                            ds.indexManager,
+                            reader,
+                            ds.getCharset(),
+                            ds.getTimeZone(),
+                            createWithDateTime);
         } else {
             writer =
                     new ShapefileFeatureWriter(
-                            delegate.shpFiles, reader, ds.getCharset(), ds.getTimeZone());
+                            delegate.shpFiles,
+                            reader,
+                            ds.getCharset(),
+                            ds.getTimeZone(),
+                            createWithDateTime);
         }
         writer.setMaxShpSize(getDataStore().getMaxShpSize());
         writer.setMaxDbfSize(getDataStore().getMaxDbfSize());

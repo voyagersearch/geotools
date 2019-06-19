@@ -126,6 +126,21 @@ class ShapefileFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
             Charset charset,
             TimeZone timezone)
             throws IOException {
+        this(
+                shpFiles,
+                featureReader,
+                charset,
+                timezone,
+                ShapefileDataStore.lookupDatetimeProperty());
+    }
+
+    public ShapefileFeatureWriter(
+            ShpFiles shpFiles,
+            ShapefileFeatureReader featureReader,
+            Charset charset,
+            TimeZone timezone,
+            boolean createWithDateTime)
+            throws IOException {
         this.shpFiles = shpFiles;
         this.dbfCharset = charset;
         this.dbfTimeZone = timezone;
@@ -160,9 +175,10 @@ class ShapefileFeatureWriter implements FeatureWriter<SimpleFeatureType, SimpleF
         FileChannel shxChannel = storageFiles.get(SHX).getWriteChannel();
         shpWriter = new ShapefileWriter(shpChannel, shxChannel);
 
-        dbfHeader = ShapefileDataStore.createDbaseHeader(featureType);
+        dbfHeader = ShapefileDataStore.createDbaseHeader(featureType, createWithDateTime);
         dbfChannel = storageFiles.get(DBF).getWriteChannel();
         dbfWriter = new DbaseFileWriter(dbfHeader, dbfChannel, dbfCharset, dbfTimeZone);
+        dbfWriter.setCreateWithDateTime(createWithDateTime);
 
         // don't try to read a shx file we're writing to in parallel
         featureReader.disableShxUsage();

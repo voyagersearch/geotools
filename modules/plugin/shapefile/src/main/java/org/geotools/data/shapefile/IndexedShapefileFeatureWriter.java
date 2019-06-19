@@ -52,7 +52,22 @@ class IndexedShapefileFeatureWriter extends ShapefileFeatureWriter implements Fi
             Charset charset,
             TimeZone timeZone)
             throws IOException {
-        super(indexes.shpFiles, featureReader, charset, timeZone);
+        this(
+                indexes,
+                featureReader,
+                charset,
+                timeZone,
+                ShapefileDataStore.lookupDatetimeProperty());
+    }
+
+    public IndexedShapefileFeatureWriter(
+            IndexManager indexes,
+            ShapefileFeatureReader featureReader,
+            Charset charset,
+            TimeZone timeZone,
+            boolean createWithDateTime)
+            throws IOException {
+        super(indexes.shpFiles, featureReader, charset, timeZone, createWithDateTime);
         this.indexes = indexes;
         if (!indexes.shpFiles.isLocal()) {
             this.fidWriter = IndexedFidWriter.EMPTY_WRITER;
