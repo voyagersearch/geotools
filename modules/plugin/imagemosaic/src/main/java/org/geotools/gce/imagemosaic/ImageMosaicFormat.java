@@ -251,6 +251,14 @@ public final class ImageMosaicFormat extends AbstractGridFormat implements Forma
                     new Boolean[] {Boolean.TRUE, Boolean.FALSE},
                     Boolean.FALSE);
 
+    /** Flag to specify explicitly that granules in a mosaic use an indexed color model. */
+    public static final ParameterDescriptor<Boolean> INDEXED =
+            new DefaultParameterDescriptor<Boolean>(
+                    "Indexed",
+                    Boolean.class,
+                    new Boolean[] {Boolean.TRUE, Boolean.FALSE},
+                    Boolean.FALSE);
+
     /** Creates an instance and sets the metadata. */
     public ImageMosaicFormat() {
         setInfo();
@@ -289,7 +297,8 @@ public final class ImageMosaicFormat extends AbstractGridFormat implements Forma
                                     FOOTPRINT_BEHAVIOR,
                                     OVERVIEW_POLICY,
                                     BANDS,
-                                    EXCESS_GRANULE_REMOVAL
+                                    EXCESS_GRANULE_REMOVAL,
+                                    INDEXED
                                 }));
 
         // reading parameters

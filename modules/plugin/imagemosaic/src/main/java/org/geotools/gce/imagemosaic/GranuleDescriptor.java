@@ -971,6 +971,7 @@ public class GranuleDescriptor {
                             + " Loading raster data for granuleDescriptor "
                             + this.toString());
         }
+
         ImageReadParam readParameters = null;
         int imageIndex;
         final double[] virtualNativeResolution = request.getVirtualNativeResolution();
@@ -1208,11 +1209,16 @@ public class GranuleDescriptor {
             // don't pass down the band selection if the original color model is indexed and
             // color expansion is enabled
             final boolean expandToRGB = request.getRasterManager().isExpandMe();
-            if (expandToRGB
-                    && getRawColorModel(reader, ovrIndex) instanceof IndexColorModel
-                    && readParameters instanceof EnhancedImageReadParam) {
-                EnhancedImageReadParam erp = (EnhancedImageReadParam) readParameters;
-                erp.setBands(null);
+            if (expandToRGB && readParameters instanceof EnhancedImageReadParam) {
+                Boolean isIndexedColorModel = request.getIndexedColorModel();
+                if (isIndexedColorModel == null) {
+                    isIndexedColorModel =
+                            getRawColorModel(reader, ovrIndex) instanceof IndexColorModel;
+                }
+                if (isIndexedColorModel == Boolean.TRUE) {
+                    EnhancedImageReadParam erp = (EnhancedImageReadParam) readParameters;
+                    erp.setBands(null);
+                }
             }
 
             RenderedImage raster;

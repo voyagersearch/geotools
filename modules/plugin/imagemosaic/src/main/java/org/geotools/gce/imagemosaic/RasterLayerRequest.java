@@ -141,6 +141,12 @@ public class RasterLayerRequest {
     /** Flag specifying whether we need to set the ROI in any case in the output mosaic */
     private boolean setRoiProperty;
 
+    /**
+     * Flag specifying whether granules use an indexed color model. True == definitely yes False ==
+     * definitely no null == unknown
+     */
+    private Boolean indexedColorModel = null;
+
     private final Map<String, List> requestedAdditionalDomains = new HashMap<String, List>();
 
     // the bands parameter define the order and which bands should be returned
@@ -877,6 +883,10 @@ public class RasterLayerRequest {
             setRoiProperty = ((Boolean) value).booleanValue();
             return;
         }
+
+        if (name.equals(ImageMosaicFormat.INDEXED.getName())) {
+            indexedColorModel = (Boolean) param.getValue();
+        }
     }
 
     /** @return the accurateResolution */
@@ -1022,6 +1032,14 @@ public class RasterLayerRequest {
 
     public void setSetRoiProperty(boolean setRoiProperty) {
         this.setRoiProperty = setRoiProperty;
+    }
+
+    public Boolean getIndexedColorModel() {
+        return indexedColorModel;
+    }
+
+    public void setIndexedColorModel(Boolean indexedColorModel) {
+        this.indexedColorModel = indexedColorModel;
     }
 
     @Override
