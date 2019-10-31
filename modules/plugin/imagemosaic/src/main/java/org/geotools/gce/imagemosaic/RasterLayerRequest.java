@@ -148,6 +148,11 @@ public class RasterLayerRequest {
     private boolean setRoiProperty;
 
     private final Map<String, List> requestedAdditionalDomains = new HashMap<>();
+    /**
+     * Flag specifying whether granules use an indexed color model. True == definitely yes False ==
+     * definitely no null == unknown
+     */
+    private Boolean indexedColorModel = null;
 
     // the bands parameter define the order and which bands should be returned
     private int[] bands;
@@ -946,6 +951,10 @@ public class RasterLayerRequest {
             rescalingEnabled = Boolean.TRUE.equals(param.getValue());
             return;
         }
+
+        if (name.equals(ImageMosaicFormat.INDEXED.getName())) {
+            indexedColorModel = (Boolean) param.getValue();
+        }
     }
 
     /** @return the accurateResolution */
@@ -1088,6 +1097,14 @@ public class RasterLayerRequest {
 
     public void setSetRoiProperty(boolean setRoiProperty) {
         this.setRoiProperty = setRoiProperty;
+    }
+
+    public Boolean getIndexedColorModel() {
+        return indexedColorModel;
+    }
+
+    public void setIndexedColorModel(Boolean indexedColorModel) {
+        this.indexedColorModel = indexedColorModel;
     }
 
     @Override
