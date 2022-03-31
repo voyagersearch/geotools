@@ -7,17 +7,18 @@
     <version>26.3</version>
   </parent>
   <artifactId>gt-geojsondatastore</artifactId>
+  <version>${project.parent.version}.VG1</version>
   <name>GeoJSON Datastore</name>
   <dependencies>
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-main</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
     </dependency>
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-epsg-hsql</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
@@ -26,7 +27,7 @@
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-sample-data</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
       <scope>test</scope>
     </dependency>
 
@@ -43,7 +44,7 @@
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-shapefile</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
