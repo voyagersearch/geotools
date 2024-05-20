@@ -16,6 +16,8 @@
  */
 package org.geotools.http.commons;
 
+import static org.apache.commons.lang3.StringUtils.split;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,6 +45,7 @@ import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.geotools.data.ows.AbstractOpenWebService;
@@ -106,6 +109,14 @@ public class MultithreadedHttpClient implements HTTPClient, HTTPConnectionPoolin
                                         GeoTools.getVersion(), this.getClass().getSimpleName()))
                         .useSystemProperties()
                         .setConnectionManager(connectionManager);
+
+        String[] supportedProtocols = split(System.getProperty("geotools.http.redirect.strategy"));
+        if (supportedProtocols != null) {
+            builder.setRedirectStrategy(new DefaultRedirectStrategy(supportedProtocols));
+        } else {
+            // VG-9389 : allow GET, HEAD and POST to be redirected by default:
+            builder.setRedirectStrategy(new DefaultRedirectStrategy(new String[] {"GET", "HEAD", "POST"}));
+        }
         if (credsProvider != null) {
             builder.setDefaultCredentialsProvider(credsProvider);
         }
