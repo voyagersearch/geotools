@@ -21,6 +21,7 @@
   <!-- =========================================================== -->
   <groupId>org.geotools</groupId>
   <artifactId>gt-http-commons</artifactId>
+  <version>26.3.VG1</version>
   <packaging>jar</packaging>
   <name>HTTP Client based on Apache Commons HttpClient</name>
 
@@ -52,12 +53,12 @@
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-main</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
     </dependency>
     <dependency>
       <groupId>org.geotools</groupId>
       <artifactId>gt-http</artifactId>
-      <version>${project.version}</version>
+      <version>${project.parent.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
